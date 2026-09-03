@@ -1,4 +1,4 @@
-# LEGECY 🧠
+# LEGECY 
 
 > An autonomous crypto intelligence agent built in public.
 
