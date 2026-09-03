@@ -5,6 +5,7 @@ from solders.pubkey import Pubkey
 from solders.signature import Signature
 
 from transaction_decoder import classify_transaction
+from wallet_statistics import calculate_wallet_statistics
 
 
 RPC_URL = "https://api.mainnet.solana.com"
@@ -553,7 +554,111 @@ async def build_wallet_profile(
                 )
 
     # =====================================================
-    # WALLET PROFILE
+    # CALCULATE WALLET STATISTICS
+    # =====================================================
+
+    statistics = calculate_wallet_statistics(
+        activities
+    )
+
+    # =====================================================
+    # PRINT WALLET STATISTICS
+    # =====================================================
+
+    print()
+    print("=" * 60)
+    print("WALLET STATISTICS")
+    print("=" * 60)
+
+    print(
+        f"Total activities: "
+        f"{statistics['total_activities']}"
+    )
+
+    print(
+        f"Buys: "
+        f"{statistics['buys']}"
+    )
+
+    print(
+        f"Sells: "
+        f"{statistics['sells']}"
+    )
+
+    print(
+        f"Liquidity actions: "
+        f"{statistics['liquidity_actions']}"
+    )
+
+    print(
+        f"Transfers received: "
+        f"{statistics['transfers_received']}"
+    )
+
+    print(
+        f"Transfers sent: "
+        f"{statistics['transfers_sent']}"
+    )
+
+    print(
+        f"Unknown: "
+        f"{statistics['unknown']}"
+    )
+
+    print(
+        f"Unique tokens: "
+        f"{statistics['unique_tokens']}"
+    )
+
+    print(
+        f"SOL spent: "
+        f"{statistics['total_sol_spent']}"
+    )
+
+    print(
+        f"SOL received: "
+        f"{statistics['total_sol_received']}"
+    )
+
+    print()
+
+    print("Protocol usage:")
+
+    if statistics["protocol_usage"]:
+
+        for protocol, count in (
+            statistics["protocol_usage"].items()
+        ):
+
+            print(
+                f"  {protocol}: {count}"
+            )
+
+    else:
+
+        print("  None detected")
+
+    print()
+
+    print(
+        "Win rate: "
+        f"{statistics['win_rate']}"
+    )
+
+    print(
+        "Profit/Loss: "
+        f"{statistics['profit_loss']}"
+    )
+
+    print(
+        "Reputation score: "
+        f"{statistics['reputation_score']}"
+    )
+
+    print("=" * 60)
+
+    # =====================================================
+    # FINAL WALLET PROFILE
     # =====================================================
 
     return {
@@ -579,5 +684,7 @@ async def build_wallet_profile(
 
         "unavailable_transactions": len(
             unavailable
-        )
+        ),
+
+        "statistics": statistics
     }
