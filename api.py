@@ -1,8 +1,10 @@
 import logging
 import os
+import time
+import uuid
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from solders.pubkey import Pubkey
 
@@ -14,6 +16,7 @@ load_dotenv()
 
 
 APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
+API_VERSION = "1.1.0"
 
 CORS_ORIGINS = [
     origin.strip()
@@ -35,7 +38,7 @@ logger = logging.getLogger("legecy-api")
 app = FastAPI(
     title="LEGECY Wallet Intelligence API",
     description="Solana wallet intelligence, reputation and smart-money analysis.",
-    version="1.0.0",
+    version=API_VERSION,
 )
 
 
@@ -46,6 +49,44 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    request_id = str(uuid.uuid4())
+    start_time = time.perf_counter()
+
+    try:
+        response = await call_next(request)
+
+        duration_ms = (time.perf_counter() - start_time) * 1000
+
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Response-Time-MS"] = f"{duration_ms:.2f}"
+
+        logger.info(
+            "request_id=%s method=%s path=%s status=%s duration_ms=%.2f",
+            request_id,
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
+
+        return response
+
+    except Exception:
+        duration_ms = (time.perf_counter() - start_time) * 1000
+
+        logger.exception(
+            "request_id=%s method=%s path=%s status=500 duration_ms=%.2f",
+            request_id,
+            request.method,
+            request.url.path,
+            duration_ms,
+        )
+
+        raise
 
 
 def validate_wallet_address(wallet_address: str) -> str:
@@ -77,7 +118,7 @@ async def root():
         "name": "LEGECY",
         "service": "Solana Wallet Intelligence API",
         "status": "online",
-        "version": "1.0.0",
+        "version": API_VERSION,
         "environment": APP_ENV,
     }
 
@@ -87,6 +128,7 @@ async def health():
     return {
         "status": "ok",
         "service": "legecy-api",
+        "version": API_VERSION,
         "environment": APP_ENV,
     }
 
@@ -114,7 +156,7 @@ async def analyze_wallet(wallet_address: str):
 
     except Exception:
         logger.exception(
-            "Wallet analysis failed for address: %s",
+            "Wallet analysis failed for wallet=%s",
             wallet_address,
         )
 
