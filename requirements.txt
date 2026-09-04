@@ -1,3 +1,5 @@
 solana
 solders
 python-dotenv
+fastapi
+uvicorn
