@@ -9,6 +9,7 @@ from solders.signature import Signature
 from transaction_decoder import classify_transaction
 from wallet_statistics import calculate_wallet_statistics
 from wallet_reputation import calculate_reputation_score
+from smart_money_engine import calculate_smart_money
 
 
 load_dotenv()
@@ -87,6 +88,76 @@ def find_wallet_index(message, wallet_address):
     return None
 
 
+def build_trade_data(
+    token_changes,
+    sol_change,
+    transaction_failed=False
+):
+    """
+    Build a simple INPUT -> OUTPUT representation.
+
+    Token-to-token swaps use the actual token movements.
+
+    SOL/token swaps use SOL as one side of the trade.
+    Failed transactions do not receive a trade object.
+    """
+
+    if transaction_failed:
+        return None
+
+    if not token_changes:
+        return None
+
+    tokens_sent = []
+    tokens_received = []
+
+    for token in token_changes:
+        direction = token.get("direction")
+        mint = token.get("mint")
+        change = token.get("change", 0)
+
+        if not mint:
+            continue
+
+        try:
+            amount = abs(float(change))
+        except (TypeError, ValueError):
+            continue
+
+        if amount <= 0:
+            continue
+
+        if direction == "sent":
+            tokens_sent.append(
+                {
+                    "asset": str(mint),
+                    "amount": amount
+                }
+            )
+
+        elif direction == "received":
+            tokens_received.append(
+                {
+                    "asset": str(mint),
+                    "amount": amount
+                }
+            )
+
+    if not tokens_sent or not tokens_received:
+        return None
+
+    # ---------------------------------------------------------
+    # Token -> Token
+    # ---------------------------------------------------------
+
+    return {
+        "input_asset": tokens_sent[0]["asset"],
+        "input_amount": tokens_sent[0]["amount"],
+        "output_asset": tokens_received[0]["asset"],
+        "output_amount": tokens_received[0]["amount"]
+    }
+
+
 def build_transaction_data(tx, wallet_address):
     if tx is None:
         return None
@@ -135,9 +206,6 @@ def build_transaction_data(tx, wallet_address):
 
     # ---------------------------------------------------------
     # Token balances
-    #
-    # Aggregate wallet-owned balances by mint instead of
-    # matching individual token accounts.
     # ---------------------------------------------------------
 
     pre_tokens = {}
@@ -151,8 +219,6 @@ def build_transaction_data(tx, wallet_address):
             else None
         )
 
-        # If RPC gives an owner, only keep balances
-        # belonging to the wallet we are analyzing.
         if owner is not None and owner != wallet_address:
             continue
 
@@ -212,7 +278,7 @@ def build_transaction_data(tx, wallet_address):
         )
 
     # ---------------------------------------------------------
-    # Work out which tokens actually moved
+    # Token changes
     # ---------------------------------------------------------
 
     all_tokens = (
@@ -256,6 +322,45 @@ def build_transaction_data(tx, wallet_address):
         )
 
     # ---------------------------------------------------------
+    # Explicit token inputs / outputs
+    # ---------------------------------------------------------
+
+    tokens_sent = []
+    tokens_received = []
+
+    for token in token_changes:
+
+        if token["direction"] == "sent":
+            tokens_sent.append(
+                {
+                    "mint": token["mint"],
+                    "amount": abs(
+                        float(token["change"])
+                    )
+                }
+            )
+
+        elif token["direction"] == "received":
+            tokens_received.append(
+                {
+                    "mint": token["mint"],
+                    "amount": float(
+                        token["change"]
+                    )
+                }
+            )
+
+    # ---------------------------------------------------------
+    # Structured trade
+    # ---------------------------------------------------------
+
+    trade = build_trade_data(
+        token_changes,
+        sol_change,
+        transaction_failed
+    )
+
+    # ---------------------------------------------------------
     # Top-level programs
     # ---------------------------------------------------------
 
@@ -270,7 +375,7 @@ def build_transaction_data(tx, wallet_address):
             pass
 
     # ---------------------------------------------------------
-    # Programs used by inner instructions
+    # Inner instruction programs
     # ---------------------------------------------------------
 
     for inner_group in meta.inner_instructions or []:
@@ -297,6 +402,12 @@ def build_transaction_data(tx, wallet_address):
         "wallet_sol_change": sol_change,
 
         "token_changes": token_changes,
+
+        "tokens_sent": tokens_sent,
+
+        "tokens_received": tokens_received,
+
+        "trade": trade,
 
         "programs": list(programs),
 
@@ -370,6 +481,20 @@ async def analyze_transaction(
             []
         ),
 
+        "tokens_sent": data.get(
+            "tokens_sent",
+            []
+        ),
+
+        "tokens_received": data.get(
+            "tokens_received",
+            []
+        ),
+
+        "trade": data.get(
+            "trade"
+        ),
+
         "programs": data.get(
             "programs",
             []
@@ -441,8 +566,48 @@ async def build_wallet_profile(
                     "Transaction status: FAILED"
                 )
 
-            # Protocols are dictionaries internally,
-            # so convert them to names only for display.
+            # -------------------------------------------------
+            # Trade
+            # -------------------------------------------------
+
+            trade = analysis.get("trade")
+
+            if trade:
+                print(
+                    "Trade: "
+                    f"{trade['input_amount']} "
+                    f"{trade['input_asset']} "
+                    f"-> "
+                    f"{trade['output_amount']} "
+                    f"{trade['output_asset']}"
+                )
+
+            # -------------------------------------------------
+            # Token movement
+            # -------------------------------------------------
+
+            if analysis.get("tokens_sent"):
+                print("Tokens sent:")
+
+                for token in analysis["tokens_sent"]:
+                    print(
+                        f"  {token['amount']} "
+                        f"{token['mint']}"
+                    )
+
+            if analysis.get("tokens_received"):
+                print("Tokens received:")
+
+                for token in analysis["tokens_received"]:
+                    print(
+                        f"  {token['amount']} "
+                        f"{token['mint']}"
+                    )
+
+            # -------------------------------------------------
+            # Protocols
+            # -------------------------------------------------
+
             if analysis["protocols"]:
 
                 protocol_names = []
@@ -488,6 +653,20 @@ async def build_wallet_profile(
 
         statistics["reputation_score"] = (
             reputation_score
+        )
+
+        # -----------------------------------------------------
+        # Smart Money analysis
+        # -----------------------------------------------------
+
+        smart_money = calculate_smart_money(
+            statistics=statistics,
+            behavior=None,
+            reputation=reputation_score
+        )
+
+        statistics["smart_money_score"] = (
+            smart_money.get("score", 0)
         )
 
         print("=" * 60)
@@ -582,7 +761,7 @@ async def build_wallet_profile(
                 signatures
             ),
 
-            "decoded_activities": len(
+            "decoded_activities": len(	
                 activities
             ),
 
@@ -590,7 +769,9 @@ async def build_wallet_profile(
                 unavailable
             ),
 
-            "statistics": statistics
+            "statistics": statistics,
+
+            "smart_money": smart_money
         }
 
 

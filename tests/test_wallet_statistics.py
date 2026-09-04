@@ -1,84 +1,85 @@
 from wallet_statistics import calculate_wallet_statistics
 
 
-activities = [
+def test_empty_statistics():
+    result = calculate_wallet_statistics([])
 
-    {
-        "event": "POSSIBLE_BUY",
-        "wallet_sol_change": -1.0,
-        "token_changes": [
-            {
-                "mint": "TOKEN_A",
-                "change": 100,
-                "direction": "received"
-            }
-        ],
-        "protocols": [
-            {
-                "name": "Raydium AMM v4"
-            }
-        ]
-    },
-
-    {
-        "event": "POSSIBLE_SELL",
-        "wallet_sol_change": 2.0,
-        "token_changes": [
-            {
-                "mint": "TOKEN_A",
-                "change": -100,
-                "direction": "sent"
-            }
-        ],
-        "protocols": [
-            {
-                "name": "Raydium AMM v4"
-            }
-        ]
-    },
-
-    {
-        "event": "POSSIBLE_LIQUIDITY",
-        "wallet_sol_change": -0.5,
-        "token_changes": [
-            {
-                "mint": "TOKEN_B",
-                "change": 50,
-                "direction": "received"
-            }
-        ],
-        "protocols": [
-            {
-                "name": "Orca Whirlpool"
-            }
-        ]
-    }
-]
+    assert result["total_activities"] == 0
+    assert result["trading_activity"] == 0
+    assert result["unique_tokens"] == 0
+    assert result["win_rate"] is None
+    assert result["profit_loss"] == 0.0
 
 
-result = calculate_wallet_statistics(
-    activities
-)
+def test_statistics_include_trade_performance():
+    activities = [
+        {
+            "event": "TOKEN_SWAP",
+            "transaction_failed": False,
+            "wallet_sol_change": -0.1,
+            "token_changes": [
+                {
+                    "mint": "TOKEN_A",
+                    "change": -100,
+                    "direction": "sent",
+                },
+                {
+                    "mint": "TOKEN_B",
+                    "change": 200,
+                    "direction": "received",
+                },
+            ],
+            "trade": {
+                "input_asset": "TOKEN_A",
+                "input_amount": 100,
+                "output_asset": "TOKEN_B",
+                "output_amount": 200,
+            },
+            "protocols": [
+                {
+                    "name": "Test Protocol"
+                }
+            ],
+        }
+    ]
+
+    result = calculate_wallet_statistics(
+        activities
+    )
+
+    assert result["token_swaps"] == 1
+    assert result["trading_activity"] == 1
+    assert result["unique_tokens"] == 2
+
+    assert "trade_performance" in result
+    assert result["trade_performance"]["trades"] == 1
+
+    assert result["win_rate"] is None
+    assert result["profit_loss"] == 0.0
+
+    assert (
+        result["protocol_usage"]["Test Protocol"]
+        == 1
+    )
 
 
-assert result["total_activities"] == 3
-assert result["buys"] == 1
-assert result["sells"] == 1
-assert result["liquidity_actions"] == 1
-assert result["trading_activity"] == 2
-assert result["unique_tokens"] == 2
-assert result["total_sol_spent"] == 1.5
-assert result["total_sol_received"] == 2.0
-assert result["protocol_usage"]["Raydium AMM v4"] == 2
-assert result["protocol_usage"]["Orca Whirlpool"] == 1
+def test_failed_swap_is_counted_but_not_traded():
+    activities = [
+        {
+            "event": "SWAP_FAILED",
+            "transaction_failed": True,
+            "wallet_sol_change": -0.001,
+            "token_changes": [],
+            "trade": None,
+            "protocols": [],
+        }
+    ]
 
-print("WALLET STATISTICS TEST: PASS")
-print()
-print("Activities:", result["total_activities"])
-print("Buys:", result["buys"])
-print("Sells:", result["sells"])
-print("Liquidity:", result["liquidity_actions"])
-print("Unique tokens:", result["unique_tokens"])
-print("SOL spent:", result["total_sol_spent"])
-print("SOL received:", result["total_sol_received"])
-print("Protocols:", result["protocol_usage"])
+    result = calculate_wallet_statistics(
+        activities
+    )
+
+    assert result["swap_failed"] == 1
+    assert result["trading_activity"] == 0
+    assert result["trade_performance"]["trades"] == 0
+    assert result["win_rate"] is None

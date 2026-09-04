@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LEGECY — Wallet Intelligence</title>
+<style>
+:root{
+  --bg:#07090d;--panel:#0d1118;--panel2:#10151d;--line:#1c2530;
+  --text:#f2f5f8;--muted:#788493;--green:#78f5a2;--green2:#35d979;
+  --purple:#9a7cff;--red:#ff6f7d;--yellow:#f4c95d;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:
+ radial-gradient(circle at 80% -10%,rgba(120,245,162,.08),transparent 28%),
+ radial-gradient(circle at 10% 20%,rgba(154,124,255,.06),transparent 24%),
+ var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.18;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:42px 42px}
+.container{width:min(1180px,92%);margin:auto;position:relative}
+header{height:78px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:12px}.mark{width:34px;height:34px;border:1px solid rgba(120,245,162,.45);border-radius:10px;display:grid;place-items:center;color:var(--green);font-weight:900;background:rgba(120,245,162,.06);box-shadow:0 0 28px rgba(120,245,162,.08)}
+.logo{font-weight:850;letter-spacing:1.5px}.logo span{color:var(--green)}
+.header-right{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}.dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green)}
+.hero{padding:64px 0 34px}.eyebrow{color:var(--green);font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:750;margin-bottom:15px}
+h1{font-size:clamp(38px,6vw,68px);line-height:.98;letter-spacing:-3px;margin:0;max-width:760px}.hero p{color:var(--muted);font-size:15px;line-height:1.7;max-width:650px;margin:20px 0 28px}
+.search{display:flex;gap:9px;max-width:900px;background:rgba(13,17,24,.86);border:1px solid var(--line);padding:7px;border-radius:15px;box-shadow:0 16px 50px rgba(0,0,0,.22)}
+.search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#fff;padding:14px;font:inherit;font-size:14px}.search input::placeholder{color:#53606e}
+.search button{border:0;border-radius:10px;padding:0 24px;background:var(--green);color:#07100a;font-weight:850;cursor:pointer}.search button:hover{background:#92f9b5}.search button:disabled{opacity:.55;cursor:wait}
+.status{min-height:20px;color:var(--muted);font-size:12px;margin:11px 3px}.error{color:var(--red)}.success{color:var(--green)}
+.hidden{display:none!important}
+.walletbar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 17px;background:rgba(13,17,24,.8);border:1px solid var(--line);border-radius:13px;margin:10px 0 18px}
+.walletmeta{min-width:0}.label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#586574}.address{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#b9c2cd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:5px}.live{font-size:11px;color:var(--green);white-space:nowrap}
+.topgrid{display:grid;grid-template-columns:1.45fr .85fr;gap:14px}
+.card{background:linear-gradient(145deg,rgba(15,20,28,.97),rgba(10,14,20,.97));border:1px solid var(--line);border-radius:17px;padding:20px;box-shadow:0 10px 35px rgba(0,0,0,.16)}
+.reputation{min-height:245px;display:flex;align-items:center;gap:35px}.score-ring{width:178px;height:178px;border-radius:50%;display:grid;place-items:center;position:relative;background:conic-gradient(var(--green) var(--score,0%),#1a222b 0);flex:none}
+.score-ring:after{content:"";position:absolute;inset:10px;border-radius:50%;background:#0b1016;border:1px solid #202a35}.score-inner{position:relative;z-index:1;text-align:center}.score{font-size:43px;font-weight:850;letter-spacing:-2px}.score small{font-size:15px;color:var(--muted);font-weight:500}.rating{margin-top:4px;color:var(--green);font-size:11px;text-transform:uppercase;letter-spacing:1.5px;font-weight:800}
+.rep-copy h2{font-size:23px;margin:0 0 8px}.rep-copy p{color:var(--muted);font-size:13px;line-height:1.65;margin:0 0 18px}.mini-stats{display:flex;gap:25px}.mini-stat strong{display:block;font-size:16px}.mini-stat span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:14px}.stat{padding:18px}.stat .value{font-size:27px;font-weight:820;letter-spacing:-1px;margin-top:8px}.stat .sub{font-size:11px;color:var(--muted);margin-top:5px}
+.section-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.wide{grid-column:1/-1}
+.section-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}.section-title h3{margin:0;font-size:14px}.section-title span{font-size:10px;color:#566270;text-transform:uppercase;letter-spacing:1.2px}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:9px}.metric{padding:12px;background:#0a0f15;border:1px solid #17202a;border-radius:11px}.metric .name{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}.metric .val{font-size:13px;font-weight:700;margin-top:6px}
+.signals{display:flex;flex-wrap:wrap;gap:8px}.signal{font-size:11px;color:#b6c0ca;background:#101721;border:1px solid #202a35;border-radius:999px;padding:8px 10px}
+.protocol{margin:13px 0}.protocol-head{display:flex;justify-content:space-between;font-size:12px;margin-bottom:7px}.protocol-head span:last-child{color:var(--green);font-weight:750}.bar{height:5px;background:#18212b;border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--green2),var(--green));border-radius:99px;width:0}
+.perf{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.perf .metric{min-height:74px}.pl{font-size:18px!important}.positive{color:var(--green)}.negative{color:var(--red)}
+.smart-money{display:flex;gap:22px;align-items:center}
+.sm-score{width:112px;height:112px;border-radius:50%;display:grid;place-items:center;position:relative;background:conic-gradient(var(--purple) var(--sm-score,0%),#1a222b 0);flex:none}
+.sm-score:after{content:"";position:absolute;inset:8px;border-radius:50%;background:#0b1016;border:1px solid #202a35}
+.sm-score-inner{position:relative;z-index:1;text-align:center}
+.sm-score-value{font-size:27px;font-weight:850;letter-spacing:-1px}
+.sm-score-value small{font-size:11px;color:var(--muted);font-weight:500}
+.sm-rating{margin-top:3px;color:var(--purple);font-size:9px;text-transform:uppercase;letter-spacing:1.2px;font-weight:800}
+.sm-copy{min-width:0;flex:1}.sm-copy h3{margin:0 0 6px;font-size:16px}.sm-copy p{margin:0;color:var(--muted);font-size:12px;line-height:1.6}
+.sm-confidence{margin-top:9px;font-size:10px;color:#8995a3;text-transform:uppercase;letter-spacing:1px}
+.sm-confidence strong{color:var(--green);font-weight:800}
+.sm-risk .signal{border-color:rgba(255,111,125,.25);color:#d5a5ac}
+@media(max-width:650px){.smart-money{flex-direction:column;text-align:center}.sm-copy{width:100%}}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 10px;border-bottom:1px solid #18212a;font-size:12px}th{color:#5e6b79;text-transform:uppercase;font-size:9px;letter-spacing:1px;font-weight:700}td{color:#c1c9d3}.empty{color:#596675;font-size:12px;padding:10px 0}
+footer{padding:34px 0 50px;color:#4f5a67;font-size:11px;display:flex;justify-content:space-between;border-top:1px solid #151d25;margin-top:35px}
+@media(max-width:900px){.topgrid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:650px){.container{width:94%}header{height:68px}.header-right{display:none}.hero{padding:45px 0 25px}h1{letter-spacing:-2px}.search{flex-direction:column}.search button{height:46px}.walletbar{align-items:flex-start;flex-direction:column}.reputation{flex-direction:column;text-align:center;padding:28px 15px}.mini-stats{justify-content:center}.section-grid{grid-template-columns:1fr}.wide{grid-column:auto}.cards{grid-template-columns:1fr 1fr}.metrics,.perf{grid-template-columns:1fr 1fr}footer{display:block;line-height:2}}
+</style>
+</head>
+<body>
+<div class="container">
+<header>
+  <div class="brand"><div class="mark">&gt;_</div><div class="logo">LEGECY<span>.</span></div></div>
+  <div class="header-right"><i class="dot"></i> ON-CHAIN INTELLIGENCE</div>
+</header>
+
+<section class="hero">
+  <div class="eyebrow">Wallet Intelligence</div>
+  <h1>Read the wallet.<br>Understand the behavior.</h1>
+  <p>Turn raw Solana activity into a simple picture of how a wallet trades, what it uses, how often it fails, and what its on-chain reputation looks like.</p>
+  <div class="search">
+    <input id="walletInput" placeholder="Paste a Solana wallet address" autocomplete="off">
+    <button id="analyzeButton" onclick="analyzeWallet()">Analyze wallet</button>
+  </div>
+  <div id="status" class="status"></div>
+</section>
+
+<main id="dashboard" class="hidden">
+  <div class="walletbar">
+    <div class="walletmeta"><div class="label">Analyzed wallet</div><div id="walletAddress" class="address"></div></div>
+    <div class="live"><i class="dot"></i> LIVE ANALYSIS</div>
+  </div>
+
+  <div class="topgrid">
+    <div class="card reputation">
+      <div class="score-ring" id="scoreRing"><div class="score-inner"><div class="score"><span id="reputationScore">—</span><small>/100</small></div><div id="reputationRating" class="rating">—</div></div></div>
+      <div class="rep-copy">
+        <div class="label">LEGECY reputation</div>
+        <h2 id="repHeadline">Wallet profile</h2>
+        <p id="repDescription">A reputation score built from observed activity, trading behavior, protocol diversity, swap reliability and realized performance.</p>
+        <div class="mini-stats">
+          <div class="mini-stat"><strong id="repTrades">—</strong><span>Trades</span></div>
+          <div class="mini-stat"><strong id="repTokens">—</strong><span>Tokens</span></div>
+          <div class="mini-stat"><strong id="repProtocols">—</strong><span>Protocols</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><h3>Wallet signal</h3><span>Behavior</span></div>
+      <div class="metrics">
+        <div class="metric"><div class="name">Trading style</div><div id="tradingStyle" class="val">—</div></div>
+        <div class="metric"><div class="name">Risk</div><div id="riskLevel" class="val">—</div></div>
+        <div class="metric"><div class="name">Frequency</div><div id="tradingFrequency" class="val">—</div></div>
+        <div class="metric"><div class="name">Token diversity</div><div id="tokenDiversity" class="val">—</div></div>
+        <div class="metric"><div class="name">Protocol diversity</div><div id="protocolDiversity" class="val">—</div></div>
+        <div class="metric"><div class="name">Failure rate</div><div id="behaviorFailureRate" class="val">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card stat"><div class="label">Trades</div><div id="tradeCount" class="value">—</div><div id="closedTrades" class="sub">— closed</div></div>
+    <div class="card stat"><div class="label">Swap failure</div><div id="failureRate" class="value">—</div><div id="swapAttempts" class="sub">— attempts</div></div>
+    <div class="card stat"><div class="label">Unique tokens</div><div id="uniqueTokens" class="value">—</div><div id="protocolCount" class="sub">— protocols</div></div>
+    <div class="card stat"><div class="label">Realized P/L</div><div id="realizedPLTop" class="value">—</div><div class="sub">Closed positions</div></div>
+  </div>
+
+  <div class="section-grid">
+    <div class="card">
+      <div class="section-title"><h3>Trading performance</h3><span>FIFO realized</span></div>
+      <div class="perf">
+        <div class="metric"><div class="name">Closed</div><div id="closedTradeCount" class="val">—</div></div>
+        <div class="metric"><div class="name">Wins</div><div id="winningTrades" class="val">—</div></div>
+        <div class="metric"><div class="name">Losses</div><div id="losingTrades" class="val">—</div></div>
+        <div class="metric"><div class="name">Win rate</div><div id="winRate" class="val">—</div></div>
+        <div class="metric" style="grid-column:1/-1"><div class="name">Realized P/L</div><div id="realizedPL" class="val pl">—</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><h3>Swap activity</h3><span>Execution</span></div>
+      <div class="metrics">
+        <div class="metric"><div class="name">Successful</div><div id="successfulSwaps" class="val">—</div></div>
+        <div class="metric"><div class="name">Failed</div><div id="failedSwaps" class="val">—</div></div>
+        <div class="metric"><div class="name">Attempts</div><div id="attemptedSwaps" class="val">—</div></div>
+        <div class="metric"><div class="name">Failure rate</div><div id="swapFailureRate" class="val">—</div></div>
+      </div>
+    </div>
+
+    <div class="card wide">
+      <div class="section-title"><h3>Smart Money</h3><span>Wallet intelligence</span></div>
+      <div class="smart-money">
+        <div class="sm-score" id="smartMoneyRing">
+          <div class="sm-score-inner">
+            <div class="sm-score-value"><span id="smartMoneyScore">—</span><small>/100</small></div>
+            <div id="smartMoneyRating" class="sm-rating">—</div>
+          </div>
+        </div>
+        <div class="sm-copy">
+          <h3 id="smartMoneyHeadline">Smart-money profile</h3>
+          <p id="smartMoneyDescription">A signal built from trading activity, token diversity, protocol usage, swap reliability, reputation and available data coverage.</p>
+          <div class="sm-confidence">Confidence: <strong id="smartMoneyConfidence">—</strong></div>
+        </div>
+      </div>
+      <div class="metrics" style="margin-top:14px">
+        <div class="metric"><div class="name">Trading activity</div><div id="smTradingActivity" class="val">—</div></div>
+        <div class="metric"><div class="name">Unique tokens</div><div id="smUniqueTokens" class="val">—</div></div>
+        <div class="metric"><div class="name">Protocols</div><div id="smProtocolCount" class="val">—</div></div>
+        <div class="metric"><div class="name">Swap failure</div><div id="smFailureRate" class="val">—</div></div>
+        <div class="metric"><div class="name">Reputation</div><div id="smReputationScore" class="val">—</div></div>
+        <div class="metric"><div class="name">Coverage</div><div id="smCoverage" class="val">—</div></div>
+      </div>
+      <div class="section-title" style="margin-top:18px;margin-bottom:10px"><h3>Signals</h3><span>Positive + risk</span></div>
+      <div id="smartMoneySignals" class="signals"><div class="empty">No signals available</div></div>
+      <div id="smartMoneyRiskSignals" class="signals sm-risk" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><h3>Reputation signals</h3><span>Why the score looks this way</span></div>
+      <div id="signals" class="signals"><div class="empty">No signals available</div></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><h3>Behavior signals</h3><span>Observed patterns</span></div>
+      <div id="behaviorSignals" class="signals"><div class="empty">No signals available</div></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><h3>Protocols used</h3><span>Activity share</span></div>
+      <div id="protocols"><div class="empty">No protocols detected</div></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><h3>Open positions</h3><span>Current inventory</span></div>
+      <div id="positions"><div class="empty">No open positions</div></div>
+    </div>
+  </div>
+</main>
+
+<footer><span>LEGECY · Solana Wallet Intelligence</span><span>Built from on-chain transaction data</span></footer>
+</div>
+
+<script>
+const API_URL="http://127.0.0.1:8000";
+const $=id=>document.getElementById(id);
+const val=v=>(v===null||v===undefined||v==="")?"—":v;
+const pct=v=>(v===null||v===undefined)?"—":`${Number(v).toFixed(2)}%`;
+const num=(v,d=4)=>(v===null||v===undefined||Number.isNaN(Number(v)))?"—":Number(v).toFixed(d);
+
+function status(text,type=""){ $("status").textContent=text; $("status").className=`status ${type}`; }
+function renderPills(id,items){
+  const el=$(id);el.innerHTML="";
+  if(!Array.isArray(items)||!items.length){el.innerHTML='<div class="empty">Nothing detected yet.</div>';return}
+  items.forEach(x=>{const s=document.createElement("span");s.className="signal";s.textContent=x;el.appendChild(s)})
+}
+function renderProtocols(protocols){
+  const el=$("protocols");el.innerHTML="";
+  const entries=Object.entries(protocols||{}).sort((a,b)=>b[1]-a[1]);
+  if(!entries.length){el.innerHTML='<div class="empty">No protocols detected.</div>';return}
+  const max=Math.max(...entries.map(x=>Number(x[1])));
+  entries.forEach(([name,count])=>{
+    const row=document.createElement("div");row.className="protocol";
+    row.innerHTML=`<div class="protocol-head"><span>${escapeHtml(name)}</span><span>${count}</span></div><div class="bar"><i style="width:${Math.max(5,(Number(count)/max)*100)}%"></i></div>`;
+    el.appendChild(row);
+  });
+}
+function renderPositions(positions){
+  const el=$("positions");el.innerHTML="";
+  const entries=Object.entries(positions||{});
+  if(!entries.length){el.innerHTML='<div class="empty">No open positions detected.</div>';return}
+  const table=document.createElement("table");
+  table.innerHTML="<thead><tr><th>Asset</th><th>Amount</th></tr></thead><tbody></tbody>";
+  entries.forEach(([asset,lots])=>{
+    let amount=0;(Array.isArray(lots)?lots:[]).forEach(l=>amount+=Number(l.amount||0));
+    const tr=document.createElement("tr");tr.innerHTML=`<td>${escapeHtml(asset)}</td><td>${num(amount,6)}</td>`;table.querySelector("tbody").appendChild(tr);
+  });el.appendChild(table);
+}
+function escapeHtml(v){return String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
+function describeScore(score,rating){
+  if(score>=80)return "Strong on-chain activity and reliability signals.";
+  if(score>=65)return "Healthy wallet profile with generally positive signals.";
+  if(score>=50)return "Mixed signals. The wallet shows meaningful activity with room for improvement.";
+  if(score>=35)return "Several risk or reliability signals are pulling the score down.";
+  return "Limited or concerning signals were observed in the current analysis window.";
+}
+function describeSmartMoney(score,rating){
+  if(rating==="STRONG")return "Strong combination of activity, diversity and execution reliability.";
+  if(rating==="GOOD")return "Healthy smart-money signals with a solid activity profile.";
+  if(rating==="MODERATE")return "Meaningful signals are present, but the current data is mixed.";
+  if(rating==="WEAK")return "Some useful signals exist, but reliability or depth is limited.";
+  return "The current analysis does not provide strong smart-money evidence.";
+}
+
+function renderSmartMoney(sm){
+  sm=sm||{};
+  const score=Number(sm.score||0);
+  const confidence=sm.confidence||{};
+  const metrics=sm.metrics||{};
+
+  $("smartMoneyScore").textContent=val(sm.score);
+  $("smartMoneyRating").textContent=val(sm.rating);
+  $("smartMoneyRing").style.setProperty("--sm-score",`${Math.max(0,Math.min(100,score))}%`);
+  $("smartMoneyHeadline").textContent=sm.rating?`${sm.rating} smart-money profile`:"Smart-money profile";
+  $("smartMoneyDescription").textContent=describeSmartMoney(score,sm.rating);
+  $("smartMoneyConfidence").textContent=confidence.level?`${confidence.level} · ${val(confidence.score)}/100`:"—";
+
+  $("smTradingActivity").textContent=val(metrics.trading_activity);
+  $("smUniqueTokens").textContent=val(metrics.unique_tokens);
+  $("smProtocolCount").textContent=val(metrics.protocol_count);
+  $("smFailureRate").textContent=pct(metrics.swap_failure_rate);
+  $("smReputationScore").textContent=val(metrics.reputation_score);
+  $("smCoverage").textContent=pct(metrics.coverage);
+
+  renderPills("smartMoneySignals",sm.signals);
+  const riskEl=$("smartMoneyRiskSignals");
+  riskEl.innerHTML="";
+  if(Array.isArray(sm.risk_signals)&&sm.risk_signals.length){
+    sm.risk_signals.forEach(x=>{
+      const s=document.createElement("span");
+      s.className="signal";
+      s.textContent=x;
+      riskEl.appendChild(s);
+    });
+  }
+}
+
+function renderProfile(data){
+  const analysis=data.analysis||{}, swaps=data.swap_metrics||{}, trading=data.trading||{}, perf=data.trade_performance||{}, behavior=data.behavior||{}, rep=data.reputation||{}, smartMoney=data.smart_money||{};
+  const protocols=data.protocols||{};
+  const score=Number(rep.score||0);
+  $("walletAddress").textContent=val(data.wallet);
+  $("reputationScore").textContent=val(rep.score);$("reputationRating").textContent=val(rep.rating);
+  $("scoreRing").style.setProperty("--score",`${Math.max(0,Math.min(100,score))}%`);
+  $("repHeadline").textContent=rep.rating?`${rep.rating} wallet profile`:"Wallet profile";
+  $("repDescription").textContent=describeScore(score,rep.rating);
+  $("repTrades").textContent=val(perf.trades);$("repTokens").textContent=val(trading.unique_tokens);
+  $("repProtocols").textContent=Object.keys(protocols).length;
+  $("tradeCount").textContent=val(perf.trades);$("closedTrades").textContent=`${val(perf.closed_trades)} closed`;
+  $("failureRate").textContent=pct(swaps.swap_failure_rate);$("swapAttempts").textContent=`${val(swaps.swap_attempts)} attempts`;
+  $("uniqueTokens").textContent=val(trading.unique_tokens);$("protocolCount").textContent=`${Object.keys(protocols).length} protocols`;
+  const pl=perf.realized_profit_loss;const plText=pl===null||pl===undefined?"—":`${num(pl,9)} SOL`;
+  $("realizedPL").textContent=plText;$("realizedPLTop").textContent=plText;
+  $("realizedPL").className=`val pl ${Number(pl)>0?"positive":Number(pl)<0?"negative":""}`;
+  $("realizedPLTop").className=`value ${Number(pl)>0?"positive":Number(pl)<0?"negative":""}`;
+  $("closedTradeCount").textContent=val(perf.closed_trades);$("winningTrades").textContent=val(perf.winning_trades);$("losingTrades").textContent=val(perf.losing_trades);
+  $("winRate").textContent=perf.win_rate===null||perf.win_rate===undefined?"Not enough data":pct(perf.win_rate);
+  $("successfulSwaps").textContent=val(swaps.successful_swaps);$("failedSwaps").textContent=val(swaps.failed_swaps);$("attemptedSwaps").textContent=val(swaps.swap_attempts);$("swapFailureRate").textContent=pct(swaps.swap_failure_rate);
+  $("tradingStyle").textContent=val(behavior.trading_style);$("riskLevel").textContent=val(behavior.risk_level);$("tradingFrequency").textContent=val(behavior.trading_frequency);
+  $("tokenDiversity").textContent=val(behavior.token_diversity);$("protocolDiversity").textContent=val(behavior.protocol_diversity);$("behaviorFailureRate").textContent=pct(behavior.failed_swap_rate);
+  renderPills("signals",rep.signals);renderPills("behaviorSignals",behavior.signals);renderProtocols(protocols);renderPositions(perf.open_positions);renderSmartMoney(smartMoney);
+  $("dashboard").classList.remove("hidden");
+}
+async function analyzeWallet(){
+  const wallet=$("walletInput").value.trim();
+  if(!wallet){status("Enter a Solana wallet address.","error");return}
+  $("analyzeButton").disabled=true;$("dashboard").classList.add("hidden");status("Reading on-chain activity…");
+  try{
+    const r=await fetch(`${API_URL}/wallet/${encodeURIComponent(wallet)}`);
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.detail?.message||"Wallet analysis failed.");
+    renderProfile(data);status("Analysis complete.","success");
+  }catch(e){status(e.message||"Could not connect to LEGECY API.","error")}
+  finally{$("analyzeButton").disabled=false}
+}
+$("walletInput").addEventListener("keydown",e=>{if(e.key==="Enter")analyzeWallet()});
+</script>
+</body>
+</html>
