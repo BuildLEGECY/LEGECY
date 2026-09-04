@@ -1,5 +1,7 @@
 import asyncio
+import os
 
+from dotenv import load_dotenv
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
 from solders.signature import Signature
@@ -9,7 +11,12 @@ from wallet_statistics import calculate_wallet_statistics
 from wallet_reputation import calculate_reputation_score
 
 
-RPC_URL = "https://api.mainnet.solana.com"
+load_dotenv()
+
+RPC_URL = os.getenv(
+    "RPC_URL",
+    "https://api.mainnet.solana.com"
+)
 
 
 async def get_wallet_transactions(client, wallet_address, limit=20):
