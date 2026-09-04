@@ -6,180 +6,93 @@ from solders.signature import Signature
 
 from transaction_decoder import classify_transaction
 from wallet_statistics import calculate_wallet_statistics
+from wallet_reputation import calculate_reputation_score
 
 
 RPC_URL = "https://api.mainnet.solana.com"
 
-REQUEST_DELAY = 0.8
-MAX_RETRIES = 5
+
+async def get_wallet_transactions(client, wallet_address, limit=20):
+    wallet = Pubkey.from_string(wallet_address)
+
+    response = await client.get_signatures_for_address(
+        wallet,
+        limit=limit
+    )
+
+    if not response.value:
+        return []
+
+    return [
+        item.signature
+        for item in response.value
+    ]
 
 
-# =========================================================
-# GET WALLET TRANSACTIONS
-# =========================================================
-
-async def get_wallet_transactions(wallet_address, limit=20):
-
-    async with AsyncClient(RPC_URL) as client:
-
-        await asyncio.sleep(REQUEST_DELAY)
-
-        response = await client.get_signatures_for_address(
-            Pubkey.from_string(wallet_address),
-            limit=limit
+async def get_transaction_details(client, signature):
+    try:
+        response = await client.get_transaction(
+            Signature.from_string(str(signature)),
+            encoding="jsonParsed",
+            max_supported_transaction_version=0
         )
 
         return response.value
 
+    except Exception as exc:
+        print(
+            f"Transaction fetch failed: "
+            f"{signature} -> {exc}"
+        )
+        return None
 
-# =========================================================
-# GET TRANSACTION DETAILS
-# =========================================================
-
-async def get_transaction_details(client, signature):
-
-    for attempt in range(MAX_RETRIES):
-
-        try:
-
-            await asyncio.sleep(REQUEST_DELAY)
-
-            response = await client.get_transaction(
-                Signature.from_string(str(signature)),
-                encoding="jsonParsed",
-                max_supported_transaction_version=0
-            )
-
-            if response.value is None:
-                return None
-
-            return response.value
-
-        except Exception as error:
-
-            error_text = str(error)
-
-            if (
-                "429" in error_text
-                or "Too Many Requests" in error_text
-            ):
-
-                wait_time = 2 ** attempt
-
-                print(
-                    f"RPC rate limit hit. "
-                    f"Retrying in {wait_time}s..."
-                )
-
-                await asyncio.sleep(wait_time)
-
-            else:
-
-                print(
-                    f"Transaction fetch failed: {error}"
-                )
-
-                return None
-
-    return None
-
-
-# =========================================================
-# GET TRANSACTION METADATA
-# =========================================================
 
 def get_transaction_meta(tx):
-
-    if tx is None:
+    try:
+        return tx.transaction.meta
+    except AttributeError:
         return None
 
-    try:
-
-        meta = tx.transaction.meta
-
-        if meta is not None:
-            return meta
-
-    except AttributeError:
-        pass
-
-    return None
-
-
-# =========================================================
-# GET TRANSACTION MESSAGE
-# =========================================================
 
 def get_transaction_message(tx):
-
-    if tx is None:
-        return None
-
     try:
-
         return tx.transaction.transaction.message
-
     except AttributeError:
-
         return None
 
-
-# =========================================================
-# FIND WALLET INDEX
-# =========================================================
 
 def find_wallet_index(message, wallet_address):
+    try:
+        account_keys = message.account_keys
 
-    if message is None:
+        for index, account in enumerate(account_keys):
+            try:
+                pubkey = str(account.pubkey)
+            except AttributeError:
+                pubkey = str(account)
+
+            if pubkey == wallet_address:
+                return index
+
+    except AttributeError:
         return None
-
-    for index, account in enumerate(message.account_keys):
-
-        try:
-
-            address = str(account.pubkey)
-
-        except AttributeError:
-
-            address = str(account)
-
-        if address == wallet_address:
-
-            return index
 
     return None
 
 
-# =========================================================
-# BUILD TRANSACTION INTELLIGENCE DATA
-# =========================================================
-
 def build_transaction_data(tx, wallet_address):
-
     if tx is None:
         return None
-
-    # -----------------------------------------------------
-    # Metadata
-    # -----------------------------------------------------
 
     meta = get_transaction_meta(tx)
 
     if meta is None:
         return None
 
-    # -----------------------------------------------------
-    # Message
-    # -----------------------------------------------------
-
     message = get_transaction_message(tx)
 
     if message is None:
         return None
-
-    # -----------------------------------------------------
-    # Wallet index
-    # -----------------------------------------------------
 
     wallet_index = find_wallet_index(
         message,
@@ -189,10 +102,7 @@ def build_transaction_data(tx, wallet_address):
     if wallet_index is None:
         return None
 
-    # -----------------------------------------------------
-    # SOL balance change
-    # -----------------------------------------------------
-
+    # SOL movement
     pre_balances = meta.pre_balances
     post_balances = meta.post_balances
 
@@ -207,68 +117,71 @@ def build_transaction_data(tx, wallet_address):
         - pre_balances[wallet_index]
     ) / 1_000_000_000
 
-    # -----------------------------------------------------
-    # Token balances BEFORE
-    # -----------------------------------------------------
-
+    # Token balances
     pre_tokens = {}
-
-    for token in meta.pre_token_balances or []:
-
-        owner = (
-            str(token.owner)
-            if token.owner
-            else ""
-        )
-
-        if owner != wallet_address:
-            continue
-
-        key = (
-            token.account_index,
-            str(token.mint)
-        )
-
-        amount = (
-            token.ui_token_amount.ui_amount
-            or 0
-        )
-
-        pre_tokens[key] = amount
-
-    # -----------------------------------------------------
-    # Token balances AFTER
-    # -----------------------------------------------------
-
     post_tokens = {}
 
-    for token in meta.post_token_balances or []:
-
+    for token in meta.pre_token_balances or []:
         owner = (
             str(token.owner)
             if token.owner
-            else ""
+            else None
         )
-
-        if owner != wallet_address:
-            continue
 
         key = (
             token.account_index,
             str(token.mint)
         )
 
-        amount = (
-            token.ui_token_amount.ui_amount
-            or 0
+        try:
+            amount = (
+                int(token.ui_token_amount.amount)
+                / (10 ** token.ui_token_amount.decimals)
+            )
+        except Exception:
+            amount = (
+                token.ui_token_amount.ui_amount
+                or 0
+            )
+
+        pre_tokens[key] = {
+            "amount": amount,
+            "owner": owner,
+            "account_index": token.account_index,
+            "mint": str(token.mint)
+        }
+
+    for token in meta.post_token_balances or []:
+        owner = (
+            str(token.owner)
+            if token.owner
+            else None
         )
 
-        post_tokens[key] = amount
+        key = (
+            token.account_index,
+            str(token.mint)
+        )
 
-    # -----------------------------------------------------
-    # Calculate token movements
-    # -----------------------------------------------------
+        try:
+            amount = (
+                int(token.ui_token_amount.amount)
+                / (10 ** token.ui_token_amount.decimals)
+            )
+        except Exception:
+            amount = (
+                token.ui_token_amount.ui_amount
+                or 0
+            )
 
+        post_tokens[key] = {
+            "amount": amount,
+            "owner": owner,
+            "account_index": token.account_index,
+            "mint": str(token.mint)
+        }
+
+    # Work out which tokens actually moved.
     all_tokens = (
         set(pre_tokens.keys())
         | set(post_tokens.keys())
@@ -277,20 +190,36 @@ def build_transaction_data(tx, wallet_address):
     token_changes = []
 
     for key in all_tokens:
+        before_data = pre_tokens.get(key)
+        after_data = post_tokens.get(key)
 
-        before = pre_tokens.get(
-            key,
-            0
+        before = (
+            before_data["amount"]
+            if before_data
+            else 0
         )
 
-        after = post_tokens.get(
-            key,
-            0
+        after = (
+            after_data["amount"]
+            if after_data
+            else 0
         )
 
         change = after - before
 
         if change == 0:
+            continue
+
+        owner = None
+
+        if after_data and after_data.get("owner"):
+            owner = after_data["owner"]
+        elif before_data and before_data.get("owner"):
+            owner = before_data["owner"]
+
+        # If RPC gave us an owner, make sure it belongs
+        # to the wallet we are analyzing.
+        if owner is not None and owner != wallet_address:
             continue
 
         direction = "received"
@@ -305,99 +234,55 @@ def build_transaction_data(tx, wallet_address):
                 "before": before,
                 "after": after,
                 "change": change,
-                "direction": direction
+                "direction": direction,
+                "owner": owner
             }
         )
 
-    # -----------------------------------------------------
-    # Program IDs
-    # -----------------------------------------------------
-
+    # Top-level programs
     programs = set()
 
     for instruction in message.instructions:
-
         try:
-
             programs.add(
                 str(instruction.program_id)
             )
-
         except AttributeError:
-
             pass
 
-    # -----------------------------------------------------
-    # Inner program IDs
-    # -----------------------------------------------------
-
+    # Programs used by inner instructions
     for inner_group in meta.inner_instructions or []:
-
         for instruction in inner_group.instructions:
-
             try:
-
                 programs.add(
                     str(instruction.program_id)
                 )
-
             except AttributeError:
-
                 pass
 
-    # -----------------------------------------------------
-    # Logs
-    # -----------------------------------------------------
-
-    logs = []
-
-    for log in meta.log_messages or []:
-
-        logs.append(
-            str(log)
-        )
-
-    # -----------------------------------------------------
-    # Return intelligence data
-    # -----------------------------------------------------
+    # Transaction logs
+    logs = [
+        str(log)
+        for log in (meta.log_messages or [])
+    ]
 
     return {
-
         "wallet_address": wallet_address,
-
         "wallet_sol_change": sol_change,
-
         "token_changes": token_changes,
-
         "programs": list(programs),
-
         "logs": logs
     }
 
 
-# =========================================================
-# ANALYZE ONE TRANSACTION
-# =========================================================
-
-async def analyze_transaction(
-    client,
-    signature,
-    wallet_address
-):
-
+async def analyze_transaction(client, signature, wallet_address):
     tx = await get_transaction_details(
         client,
         signature
     )
 
     if tx is None:
-
-        return {
-            "signature": str(signature),
-            "event": "UNAVAILABLE",
-            "confidence": 0.0,
-            "reason": "Transaction data unavailable"
-        }
+        return None
 
     data = build_transaction_data(
         tx,
@@ -405,59 +290,40 @@ async def analyze_transaction(
     )
 
     if data is None:
+        return None
 
-        return {
-            "signature": str(signature),
-            "event": "UNAVAILABLE",
-            "confidence": 0.0,
-            "reason": "Could not extract wallet transaction data"
-        }
-
-    # -----------------------------------------------------
-    # Decode transaction
-    # -----------------------------------------------------
-
-    result = classify_transaction(
+    classification = classify_transaction(
         data
     )
 
-    # -----------------------------------------------------
-    # Preserve protocol information
-    # -----------------------------------------------------
-
-    protocols = result.get(
+    # Keep the protocol records exactly as they come
+    # from the decoder. wallet_statistics.py uses them.
+    protocols = classification.get(
         "protocols",
         []
     )
 
-    # -----------------------------------------------------
-    # Return complete wallet activity
-    # -----------------------------------------------------
-
     return {
-
         "signature": str(signature),
 
-        "event": result.get(
+        "event": classification.get(
             "event",
             "UNKNOWN"
         ),
 
-        "confidence": result.get(
+        "confidence": classification.get(
             "confidence",
             0.0
         ),
 
-        "reason": result.get(
+        "reason": classification.get(
             "reason",
-            "No reason provided"
+            ""
         ),
-
-        "protocols": protocols,
 
         "wallet_sol_change": data.get(
             "wallet_sol_change",
-            0.0
+            0
         ),
 
         "token_changes": data.get(
@@ -468,223 +334,187 @@ async def analyze_transaction(
         "programs": data.get(
             "programs",
             []
-        )
+        ),
+
+        "protocols": protocols
     }
 
 
-# =========================================================
-# BUILD WALLET PROFILE
-# =========================================================
-
-async def build_wallet_profile(
-    wallet_address,
-    limit=20
-):
-
-    signatures = await get_wallet_transactions(
-        wallet_address,
-        limit=limit
-    )
-
-    activities = []
-
-    unavailable = []
-
+async def build_wallet_profile(wallet_address, limit=20):
     async with AsyncClient(RPC_URL) as client:
 
-        for item in signatures:
+        signatures = await get_wallet_transactions(
+            client,
+            wallet_address,
+            limit
+        )
 
-            signature = item.signature
+        activities = []
+        unavailable = []
 
-            print()
-            print(
-                f"Analyzing: {signature}"
-            )
+        for signature in signatures:
 
-            result = await analyze_transaction(
+            analysis = await analyze_transaction(
                 client,
                 signature,
                 wallet_address
             )
 
-            print(
-                f"Event: {result['event']}"
-            )
-
-            print(
-                f"Confidence: "
-                f"{result['confidence']}"
-            )
-
-            print(
-                f"Reason: "
-                f"{result['reason']}"
-            )
-
-            # -------------------------------------------------
-            # Print recognized protocols
-            # -------------------------------------------------
-
-            if result.get("protocols"):
-
-                protocol_names = [
-                    protocol["name"]
-                    for protocol in result["protocols"]
-                ]
-
-                print(
-                    f"Protocols: "
-                    f"{', '.join(protocol_names)}"
-                )
-
-            # -------------------------------------------------
-            # Store unavailable transactions separately
-            # -------------------------------------------------
-
-            if result["event"] == "UNAVAILABLE":
-
+            if analysis is None:
                 unavailable.append(
-                    result
+                    str(signature)
                 )
+                continue
 
-            else:
-
-                activities.append(
-                    result
-                )
-
-    # =====================================================
-    # CALCULATE WALLET STATISTICS
-    # =====================================================
-
-    statistics = calculate_wallet_statistics(
-        activities
-    )
-
-    # =====================================================
-    # PRINT WALLET STATISTICS
-    # =====================================================
-
-    print()
-    print("=" * 60)
-    print("WALLET STATISTICS")
-    print("=" * 60)
-
-    print(
-        f"Total activities: "
-        f"{statistics['total_activities']}"
-    )
-
-    print(
-        f"Buys: "
-        f"{statistics['buys']}"
-    )
-
-    print(
-        f"Sells: "
-        f"{statistics['sells']}"
-    )
-
-    print(
-        f"Liquidity actions: "
-        f"{statistics['liquidity_actions']}"
-    )
-
-    print(
-        f"Transfers received: "
-        f"{statistics['transfers_received']}"
-    )
-
-    print(
-        f"Transfers sent: "
-        f"{statistics['transfers_sent']}"
-    )
-
-    print(
-        f"Unknown: "
-        f"{statistics['unknown']}"
-    )
-
-    print(
-        f"Unique tokens: "
-        f"{statistics['unique_tokens']}"
-    )
-
-    print(
-        f"SOL spent: "
-        f"{statistics['total_sol_spent']}"
-    )
-
-    print(
-        f"SOL received: "
-        f"{statistics['total_sol_received']}"
-    )
-
-    print()
-
-    print("Protocol usage:")
-
-    if statistics["protocol_usage"]:
-
-        for protocol, count in (
-            statistics["protocol_usage"].items()
-        ):
+            activities.append(analysis)
 
             print(
-                f"  {protocol}: {count}"
+                f"Analyzing: {signature}"
             )
 
-    else:
+            print(
+                f"Event: {analysis['event']}"
+            )
 
-        print("  None detected")
+            print(
+                f"Confidence: {analysis['confidence']}"
+            )
 
-    print()
+            print(
+                f"Reason: {analysis['reason']}"
+            )
 
-    print(
-        "Win rate: "
-        f"{statistics['win_rate']}"
-    )
+            # Protocols are dictionaries internally,
+            # so only convert them to names for display.
+            if analysis["protocols"]:
 
-    print(
-        "Profit/Loss: "
-        f"{statistics['profit_loss']}"
-    )
+                protocol_names = []
 
-    print(
-        "Reputation score: "
-        f"{statistics['reputation_score']}"
-    )
+                for protocol in analysis["protocols"]:
 
-    print("=" * 60)
+                    if isinstance(protocol, dict):
+                        name = protocol.get("name")
 
-    # =====================================================
-    # FINAL WALLET PROFILE
-    # =====================================================
+                        if name:
+                            protocol_names.append(
+                                str(name)
+                            )
 
-    return {
+                    else:
+                        protocol_names.append(
+                            str(protocol)
+                        )
 
-        "wallet": wallet_address,
+                if protocol_names:
+                    print(
+                        "Protocols: "
+                        + ", ".join(protocol_names)
+                    )
 
-        "transactions": [
-            str(item.signature)
-            for item in signatures
-        ],
+            print()
 
-        "activities": activities,
-
-        "unavailable": unavailable,
-
-        "total_transactions": len(
-            signatures
-        ),
-
-        "decoded_activities": len(
+        statistics = calculate_wallet_statistics(
             activities
-        ),
+        )
 
-        "unavailable_transactions": len(
-            unavailable
-        ),
+        reputation_score = calculate_reputation_score(
+            statistics
+        )
 
-        "statistics": statistics
-    }
+        statistics["reputation_score"] = (
+            reputation_score
+        )
+
+        print("=" * 60)
+        print("WALLET STATISTICS")
+        print("=" * 60)
+
+        print(
+            f"Total activities: "
+            f"{statistics.get('total_activities', 0)}"
+        )
+
+        print(
+            f"Buys: "
+            f"{statistics.get('buys', 0)}"
+        )
+
+        print(
+            f"Sells: "
+            f"{statistics.get('sells', 0)}"
+        )
+
+        print(
+            f"Liquidity actions: "
+            f"{statistics.get('liquidity_actions', 0)}"
+        )
+
+        print(
+            f"Transfers received: "
+            f"{statistics.get('transfers_received', 0)}"
+        )
+
+        print(
+            f"Transfers sent: "
+            f"{statistics.get('transfers_sent', 0)}"
+        )
+
+        print(
+            f"Unknown: "
+            f"{statistics.get('unknown', 0)}"
+        )
+
+        print(
+            f"Unique tokens: "
+            f"{statistics.get('unique_tokens', 0)}"
+        )
+
+        print(
+            f"SOL spent: "
+            f"{statistics.get('sol_spent', 0)}"
+        )
+
+        print(
+            f"SOL received: "
+            f"{statistics.get('sol_received', 0)}"
+        )
+
+        print(
+            f"Reputation score: "
+            f"{reputation_score}"
+        )
+
+        print("=" * 60)
+
+        return {
+            "wallet": wallet_address,
+
+            "transactions": [
+                str(signature)
+                for signature in signatures
+            ],
+
+            "activities": activities,
+
+            "unavailable": unavailable,
+
+            "total_transactions": len(
+                signatures
+            ),
+
+            "decoded_activities": len(
+                activities
+            ),
+
+            "unavailable_transactions": len(
+                unavailable
+            ),
+
+            "statistics": statistics
+        }
+
+
+if __name__ == "__main__":
+    print(
+        "wallet_intelligence.py loaded successfully."
+    )

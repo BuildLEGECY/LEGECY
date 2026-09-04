@@ -90,7 +90,10 @@ def classify_transaction(transaction):
     token_sent = False
 
     for token in token_changes:
-        direction = str(token.get("direction", "")).lower()
+
+        direction = str(
+            token.get("direction", "")
+        ).lower()
 
         change = token.get("change", 0)
 
@@ -99,10 +102,18 @@ def classify_transaction(transaction):
         except (TypeError, ValueError):
             change = 0
 
-        if direction in ("received", "receive", "in"):
+        if direction in (
+            "received",
+            "receive",
+            "in",
+        ):
             token_received = True
 
-        elif direction in ("sent", "send", "out"):
+        elif direction in (
+            "sent",
+            "send",
+            "out",
+        ):
             token_sent = True
 
         elif change > 0:
@@ -115,7 +126,9 @@ def classify_transaction(transaction):
     # 5. Identify verified protocols
     # ---------------------------------------------------------
 
-    verified_protocols = identify_programs(programs)
+    verified_protocols = identify_programs(
+        programs
+    )
 
     protocol_names = [
         protocol["name"]
@@ -124,11 +137,6 @@ def classify_transaction(transaction):
 
     supports_swap = any(
         "SWAP" in protocol.get("supports", [])
-        for protocol in verified_protocols
-    )
-
-    supports_liquidity = any(
-        "LIQUIDITY" in protocol.get("supports", [])
         for protocol in verified_protocols
     )
 
@@ -141,23 +149,43 @@ def classify_transaction(transaction):
         for log in logs
     )
 
-    swap_in_log = "instruction: swap" in log_text
+    # Explicit swap instructions
+    swap_in_log = (
+        "instruction: swap" in log_text
+        or "instruction: swapv2" in log_text
+        or "instruction: exactinput" in log_text
+        or "instruction: exactoutput" in log_text
+    )
+
+    # Explicit liquidity instructions
     liquidity_in_log = (
         "instruction: addliquidity" in log_text
         or "instruction: removeliquidity" in log_text
         or "instruction: increase_liquidity" in log_text
         or "instruction: decrease_liquidity" in log_text
+        or "instruction: add_liquidity" in log_text
+        or "instruction: remove_liquidity" in log_text
+        or "instruction: deposit" in log_text
+        or "instruction: withdraw" in log_text
     )
 
     # ---------------------------------------------------------
     # 7. LIQUIDITY detection
     # ---------------------------------------------------------
+    #
+    # IMPORTANT:
+    # A protocol supporting LIQUIDITY does NOT mean every
+    # transaction on that protocol is a liquidity action.
+    #
+    # We require explicit liquidity instruction evidence.
+    # ---------------------------------------------------------
 
     if (
-        (supports_liquidity or liquidity_in_log)
+        liquidity_in_log
         and token_received
         and token_sent
     ):
+
         protocol_text = (
             ", ".join(protocol_names)
             if protocol_names
@@ -178,7 +206,11 @@ def classify_transaction(transaction):
     # 8. SWAP / BUY detection
     # ---------------------------------------------------------
 
-    if token_received and wallet_sol_change < 0:
+    if (
+        token_received
+        and wallet_sol_change < 0
+    ):
+
         confidence = 0.50
 
         if supports_swap or swap_in_log:
@@ -192,7 +224,10 @@ def classify_transaction(transaction):
 
         return {
             "event": "POSSIBLE_BUY",
-            "confidence": min(confidence, 1.0),
+            "confidence": min(
+                confidence,
+                1.0
+            ),
             "reason": (
                 f"Wallet spent SOL and received a token; "
                 f"swap evidence: {protocol_text}"
@@ -204,7 +239,11 @@ def classify_transaction(transaction):
     # 9. SWAP / SELL detection
     # ---------------------------------------------------------
 
-    if token_sent and wallet_sol_change > 0:
+    if (
+        token_sent
+        and wallet_sol_change > 0
+    ):
+
         confidence = 0.50
 
         if supports_swap or swap_in_log:
@@ -218,7 +257,10 @@ def classify_transaction(transaction):
 
         return {
             "event": "POSSIBLE_SELL",
-            "confidence": min(confidence, 1.0),
+            "confidence": min(
+                confidence,
+                1.0
+            ),
             "reason": (
                 f"Wallet received SOL and sent a token; "
                 f"swap evidence: {protocol_text}"
@@ -230,11 +272,18 @@ def classify_transaction(transaction):
     # 10. Token transfer received
     # ---------------------------------------------------------
 
-    if token_received and wallet_sol_change >= 0:
+    if (
+        token_received
+        and wallet_sol_change >= 0
+    ):
+
         return {
             "event": "TRANSFER_RECEIVED",
             "confidence": 0.85,
-            "reason": "Wallet received a token without spending SOL",
+            "reason": (
+                "Wallet received a token "
+                "without spending SOL"
+            ),
             "protocols": verified_protocols,
         }
 
@@ -242,11 +291,18 @@ def classify_transaction(transaction):
     # 11. Token transfer sent
     # ---------------------------------------------------------
 
-    if token_sent and wallet_sol_change <= 0:
+    if (
+        token_sent
+        and wallet_sol_change <= 0
+    ):
+
         return {
             "event": "TRANSFER_SENT",
             "confidence": 0.85,
-            "reason": "Wallet sent a token without receiving SOL",
+            "reason": (
+                "Wallet sent a token "
+                "without receiving SOL"
+            ),
             "protocols": verified_protocols,
         }
 
@@ -257,6 +313,8 @@ def classify_transaction(transaction):
     return {
         "event": "UNKNOWN",
         "confidence": 0.20,
-        "reason": "No reliable transaction pattern detected",
+        "reason": (
+            "No reliable transaction pattern detected"
+        ),
         "protocols": verified_protocols,
     }
