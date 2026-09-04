@@ -102,7 +102,16 @@ def build_transaction_data(tx, wallet_address):
     if wallet_index is None:
         return None
 
+    # ---------------------------------------------------------
+    # Transaction status
+    # ---------------------------------------------------------
+
+    transaction_failed = meta.err is not None
+
+    # ---------------------------------------------------------
     # SOL movement
+    # ---------------------------------------------------------
+
     pre_balances = meta.pre_balances
     post_balances = meta.post_balances
 
@@ -117,71 +126,88 @@ def build_transaction_data(tx, wallet_address):
         - pre_balances[wallet_index]
     ) / 1_000_000_000
 
+    # ---------------------------------------------------------
     # Token balances
+    #
+    # Aggregate wallet-owned balances by mint instead of
+    # matching individual token accounts.
+    # ---------------------------------------------------------
+
     pre_tokens = {}
     post_tokens = {}
 
     for token in meta.pre_token_balances or []:
+
         owner = (
             str(token.owner)
             if token.owner
             else None
         )
 
-        key = (
-            token.account_index,
-            str(token.mint)
-        )
+        # If RPC gives an owner, only keep balances
+        # belonging to the wallet we are analyzing.
+        if owner is not None and owner != wallet_address:
+            continue
+
+        mint = str(token.mint)
 
         try:
             amount = (
                 int(token.ui_token_amount.amount)
-                / (10 ** token.ui_token_amount.decimals)
+                / (
+                    10
+                    ** token.ui_token_amount.decimals
+                )
             )
+
         except Exception:
             amount = (
                 token.ui_token_amount.ui_amount
                 or 0
             )
 
-        pre_tokens[key] = {
-            "amount": amount,
-            "owner": owner,
-            "account_index": token.account_index,
-            "mint": str(token.mint)
-        }
+        pre_tokens[mint] = (
+            pre_tokens.get(mint, 0)
+            + amount
+        )
 
     for token in meta.post_token_balances or []:
+
         owner = (
             str(token.owner)
             if token.owner
             else None
         )
 
-        key = (
-            token.account_index,
-            str(token.mint)
-        )
+        if owner is not None and owner != wallet_address:
+            continue
+
+        mint = str(token.mint)
 
         try:
             amount = (
                 int(token.ui_token_amount.amount)
-                / (10 ** token.ui_token_amount.decimals)
+                / (
+                    10
+                    ** token.ui_token_amount.decimals
+                )
             )
+
         except Exception:
             amount = (
                 token.ui_token_amount.ui_amount
                 or 0
             )
 
-        post_tokens[key] = {
-            "amount": amount,
-            "owner": owner,
-            "account_index": token.account_index,
-            "mint": str(token.mint)
-        }
+        post_tokens[mint] = (
+            post_tokens.get(mint, 0)
+            + amount
+        )
 
-    # Work out which tokens actually moved.
+    # ---------------------------------------------------------
+    # Work out which tokens actually moved
+    # ---------------------------------------------------------
+
     all_tokens = (
         set(pre_tokens.keys())
         | set(post_tokens.keys())
@@ -189,37 +215,21 @@ def build_transaction_data(tx, wallet_address):
 
     token_changes = []
 
-    for key in all_tokens:
-        before_data = pre_tokens.get(key)
-        after_data = post_tokens.get(key)
+    for mint in all_tokens:
 
-        before = (
-            before_data["amount"]
-            if before_data
-            else 0
+        before = pre_tokens.get(
+            mint,
+            0
         )
 
-        after = (
-            after_data["amount"]
-            if after_data
-            else 0
+        after = post_tokens.get(
+            mint,
+            0
         )
 
         change = after - before
 
         if change == 0:
-            continue
-
-        owner = None
-
-        if after_data and after_data.get("owner"):
-            owner = after_data["owner"]
-        elif before_data and before_data.get("owner"):
-            owner = before_data["owner"]
-
-        # If RPC gave us an owner, make sure it belongs
-        # to the wallet we are analyzing.
-        if owner is not None and owner != wallet_address:
             continue
 
         direction = "received"
@@ -229,17 +239,19 @@ def build_transaction_data(tx, wallet_address):
 
         token_changes.append(
             {
-                "account_index": key[0],
-                "mint": key[1],
+                "mint": mint,
                 "before": before,
                 "after": after,
                 "change": change,
                 "direction": direction,
-                "owner": owner
+                "owner": wallet_address
             }
         )
 
+    # ---------------------------------------------------------
     # Top-level programs
+    # ---------------------------------------------------------
+
     programs = set()
 
     for instruction in message.instructions:
@@ -250,7 +262,10 @@ def build_transaction_data(tx, wallet_address):
         except AttributeError:
             pass
 
+    # ---------------------------------------------------------
     # Programs used by inner instructions
+    # ---------------------------------------------------------
+
     for inner_group in meta.inner_instructions or []:
         for instruction in inner_group.instructions:
             try:
@@ -260,7 +275,10 @@ def build_transaction_data(tx, wallet_address):
             except AttributeError:
                 pass
 
+    # ---------------------------------------------------------
     # Transaction logs
+    # ---------------------------------------------------------
+
     logs = [
         str(log)
         for log in (meta.log_messages or [])
@@ -268,14 +286,30 @@ def build_transaction_data(tx, wallet_address):
 
     return {
         "wallet_address": wallet_address,
+
         "wallet_sol_change": sol_change,
+
         "token_changes": token_changes,
+
         "programs": list(programs),
-        "logs": logs
+
+        "logs": logs,
+
+        "transaction_failed": transaction_failed,
+
+        "transaction_error": (
+            str(meta.err)
+            if meta.err is not None
+            else None
+        )
     }
 
 
-async def analyze_transaction(client, signature, wallet_address):
+async def analyze_transaction(
+    client,
+    signature,
+    wallet_address
+):
     tx = await get_transaction_details(
         client,
         signature
@@ -296,8 +330,6 @@ async def analyze_transaction(client, signature, wallet_address):
         data
     )
 
-    # Keep the protocol records exactly as they come
-    # from the decoder. wallet_statistics.py uses them.
     protocols = classification.get(
         "protocols",
         []
@@ -336,11 +368,23 @@ async def analyze_transaction(client, signature, wallet_address):
             []
         ),
 
-        "protocols": protocols
+        "protocols": protocols,
+
+        "transaction_failed": data.get(
+            "transaction_failed",
+            False
+        ),
+
+        "transaction_error": data.get(
+            "transaction_error"
+        )
     }
 
 
-async def build_wallet_profile(wallet_address, limit=20):
+async def build_wallet_profile(
+    wallet_address,
+    limit=20
+):
     async with AsyncClient(RPC_URL) as client:
 
         signatures = await get_wallet_transactions(
@@ -377,15 +421,21 @@ async def build_wallet_profile(wallet_address, limit=20):
             )
 
             print(
-                f"Confidence: {analysis['confidence']}"
+                f"Confidence: "
+                f"{analysis['confidence']}"
             )
 
             print(
                 f"Reason: {analysis['reason']}"
             )
 
+            if analysis.get("transaction_failed"):
+                print(
+                    "Transaction status: FAILED"
+                )
+
             # Protocols are dictionaries internally,
-            # so only convert them to names for display.
+            # so convert them to names only for display.
             if analysis["protocols"]:
 
                 protocol_names = []
@@ -413,9 +463,17 @@ async def build_wallet_profile(wallet_address, limit=20):
 
             print()
 
+        # -----------------------------------------------------
+        # Wallet statistics
+        # -----------------------------------------------------
+
         statistics = calculate_wallet_statistics(
             activities
         )
+
+        # -----------------------------------------------------
+        # Wallet reputation
+        # -----------------------------------------------------
 
         reputation_score = calculate_reputation_score(
             statistics
@@ -445,6 +503,16 @@ async def build_wallet_profile(wallet_address, limit=20):
         )
 
         print(
+            f"Token swaps: "
+            f"{statistics.get('token_swaps', 0)}"
+        )
+
+        print(
+            f"Failed swaps: "
+            f"{statistics.get('swap_failed', 0)}"
+        )
+
+        print(
             f"Liquidity actions: "
             f"{statistics.get('liquidity_actions', 0)}"
         )
@@ -471,12 +539,17 @@ async def build_wallet_profile(wallet_address, limit=20):
 
         print(
             f"SOL spent: "
-            f"{statistics.get('sol_spent', 0)}"
+            f"{statistics.get('total_sol_spent', 0)}"
         )
 
         print(
             f"SOL received: "
-            f"{statistics.get('sol_received', 0)}"
+            f"{statistics.get('total_sol_received', 0)}"
+        )
+
+        print(
+            f"Trading activity: "
+            f"{statistics.get('trading_activity', 0)}"
         )
 
         print(

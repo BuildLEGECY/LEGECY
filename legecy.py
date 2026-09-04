@@ -5,10 +5,7 @@ from wallet_intelligence import build_wallet_profile
 
 
 def print_profile(profile):
-    statistics = profile.get(
-        "statistics",
-        {}
-    )
+    statistics = profile.get("statistics", {})
 
     print()
     print("=" * 70)
@@ -26,13 +23,10 @@ def print_profile(profile):
     print("ACTIVITY")
     print("-" * 70)
 
-    print(
-        f"Buys: {statistics.get('buys', 0)}"
-    )
-
-    print(
-        f"Sells: {statistics.get('sells', 0)}"
-    )
+    print(f"Buys: {statistics.get('buys', 0)}")
+    print(f"Sells: {statistics.get('sells', 0)}")
+    print(f"Token swaps: {statistics.get('token_swaps', 0)}")
+    print(f"Failed swaps: {statistics.get('swap_failed', 0)}")
 
     print(
         f"Liquidity actions: "
@@ -49,14 +43,16 @@ def print_profile(profile):
         f"{statistics.get('transfers_sent', 0)}"
     )
 
-    print(
-        f"Unknown: "
-        f"{statistics.get('unknown', 0)}"
-    )
+    print(f"Unknown: {statistics.get('unknown', 0)}")
 
     print()
     print("TRADING")
     print("-" * 70)
+
+    print(
+        f"Trading activity: "
+        f"{statistics.get('trading_activity', 0)}"
+    )
 
     print(
         f"Unique tokens: "
@@ -65,12 +61,12 @@ def print_profile(profile):
 
     print(
         f"SOL spent: "
-        f"{statistics.get('sol_spent', 0)}"
+        f"{statistics.get('total_sol_spent', 0)}"
     )
 
     print(
         f"SOL received: "
-        f"{statistics.get('sol_received', 0)}"
+        f"{statistics.get('total_sol_received', 0)}"
     )
 
     print(
@@ -87,31 +83,11 @@ def print_profile(profile):
     print("PROTOCOLS")
     print("-" * 70)
 
-    protocols = {}
-
-    for activity in profile.get(
-        "activities",
-        []
-    ):
-        for protocol in activity.get(
-            "protocols",
-            []
-        ):
-            if isinstance(protocol, dict):
-                name = protocol.get("name")
-            else:
-                name = str(protocol)
-
-            if name:
-                protocols[name] = (
-                    protocols.get(name, 0) + 1
-                )
+    protocols = statistics.get("protocol_usage", {})
 
     if protocols:
         for name, count in protocols.items():
-            print(
-                f"{name}: {count}"
-            )
+            print(f"{name}: {count}")
     else:
         print("No recognized protocols")
 
@@ -119,13 +95,23 @@ def print_profile(profile):
     print("REPUTATION")
     print("-" * 70)
 
-    score = statistics.get(
-        "reputation_score"
-    )
+    reputation = statistics.get("reputation_score", {})
 
-    print(
-        f"Score: {score}"
-    )
+    if isinstance(reputation, dict):
+        print(f"Score: {reputation.get('score', 0)}")
+        print(f"Rating: {reputation.get('rating', 'UNKNOWN')}")
+
+        signals = reputation.get("signals", [])
+
+        if signals:
+            print()
+            print("Signals:")
+
+            for signal in signals:
+                print(f"- {signal}")
+
+    else:
+        print(f"Score: {reputation}")
 
     print()
     print("=" * 70)
@@ -138,12 +124,8 @@ async def main():
         print()
         print("LEGECY Wallet Intelligence")
         print()
-        print(
-            "Usage:"
-        )
-        print(
-            "  python legecy.py <wallet_address>"
-        )
+        print("Usage:")
+        print("  python legecy.py <wallet_address>")
         print()
         return
 
@@ -159,9 +141,7 @@ async def main():
 
     except Exception as exc:
         print()
-        print(
-            f"LEGECY analysis failed: {exc}"
-        )
+        print(f"LEGECY analysis failed: {exc}")
         print()
 
 

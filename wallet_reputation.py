@@ -1,15 +1,14 @@
 # LEGECY - Wallet Reputation
 #
-# Behavior-based wallet reputation scoring.
-# This version does NOT estimate profit or win rate.
+# Converts wallet statistics into a simple reputation score.
 
 
 def calculate_reputation_score(statistics):
     """
-    Calculate a behavior-based reputation score from 0 to 100.
+    Calculate a reputation score from wallet behavior.
 
-    This score measures observable activity quality.
-    It is NOT a prediction of future profitability.
+    The score is intentionally simple for now.
+    Later we can make this much more sophisticated.
     """
 
     if not statistics:
@@ -22,269 +21,108 @@ def calculate_reputation_score(statistics):
     score = 0.0
     signals = []
 
-    total = statistics.get(
-        "total_activities",
-        0
-    )
-
-    buys = statistics.get(
-        "buys",
-        0
-    )
-
-    sells = statistics.get(
-        "sells",
-        0
-    )
-
-    liquidity = statistics.get(
-        "liquidity_actions",
-        0
-    )
-
-    unknown = statistics.get(
-        "unknown",
-        0
-    )
-
-    unique_tokens = statistics.get(
-        "unique_tokens",
-        0
-    )
-
-    protocol_usage = statistics.get(
-        "protocol_usage",
-        {}
-    )
-
-    # ---------------------------------------------------------
-    # Activity
-    # ---------------------------------------------------------
-
-    if total >= 10:
-
-        score += 15
-
-        signals.append(
-            "Active wallet"
-        )
-
-    elif total >= 5:
-
-        score += 10
-
-        signals.append(
-            "Moderately active wallet"
-        )
-
-    elif total > 0:
-
-        score += 5
-
-        signals.append(
-            "Limited activity"
-        )
-
     # ---------------------------------------------------------
     # Trading activity
     # ---------------------------------------------------------
 
-    trading_activity = buys + sells
+    buys = statistics.get("buys", 0)
+    sells = statistics.get("sells", 0)
+    token_swaps = statistics.get("token_swaps", 0)
+    failed_swaps = statistics.get("swap_failed", 0)
+
+    trading_activity = (
+        buys +
+        sells +
+        token_swaps
+    )
+
+    if trading_activity > 0:
+        score += 20
+        signals.append("Active trader")
 
     if trading_activity >= 5:
+        score += 10
+        signals.append("High trading activity")
 
-        score += 20
+    # ---------------------------------------------------------
+    # Successful vs failed swaps
+    # ---------------------------------------------------------
 
-        signals.append(
-            "Strong trading activity"
-        )
+    if token_swaps > 0:
+        score += min(token_swaps * 2, 10)
+        signals.append("Uses token swaps")
 
-    elif trading_activity >= 2:
+    if failed_swaps > 0:
+        # Failed transactions are a small negative signal,
+        # but they should not destroy the reputation score.
+        penalty = min(failed_swaps * 2, 10)
+        score -= penalty
+        signals.append(f"{failed_swaps} failed swap attempt(s)")
 
-        score += 12
+    # ---------------------------------------------------------
+    # Token diversity
+    # ---------------------------------------------------------
 
-        signals.append(
-            "Some trading activity"
-        )
+    unique_tokens = statistics.get("unique_tokens", 0)
 
-    elif trading_activity > 0:
+    if unique_tokens >= 2:
+        score += 10
+        signals.append("Moderate token diversity")
 
-        score += 6
+    if unique_tokens >= 5:
+        score += 5
+        signals.append("High token diversity")
 
-        signals.append(
-            "Limited trading activity"
-        )
+    # ---------------------------------------------------------
+    # Protocol usage
+    # ---------------------------------------------------------
+
+    protocol_usage = statistics.get("protocol_usage", {})
+
+    if protocol_usage:
+        score += 10
+        signals.append("Uses known protocols")
+
+    if len(protocol_usage) >= 3:
+        score += 5
+        signals.append("Uses multiple known protocols")
 
     # ---------------------------------------------------------
     # Buy / sell balance
     # ---------------------------------------------------------
 
     if buys > 0 and sells > 0:
-
-        score += 15
-
-        signals.append(
-            "Both entries and exits observed"
-        )
-
-    elif buys > 0:
-
-        score += 8
-
-        signals.append(
-            "Buy activity observed"
-        )
-
-    elif sells > 0:
-
-        score += 8
-
-        signals.append(
-            "Sell activity observed"
-        )
-
-    # ---------------------------------------------------------
-    # Token diversity
-    # ---------------------------------------------------------
-
-    if unique_tokens >= 10:
-
-        score += 15
-
-        signals.append(
-            "High token diversity"
-        )
-
-    elif unique_tokens >= 3:
-
         score += 10
-
-        signals.append(
-            "Moderate token diversity"
-        )
-
-    elif unique_tokens > 0:
-
-        score += 5
-
-        signals.append(
-            "Limited token diversity"
-        )
+        signals.append("Has both buy and sell activity")
 
     # ---------------------------------------------------------
-    # Protocol usage
+    # Keep score inside 0-100
     # ---------------------------------------------------------
 
-    protocol_count = len(
-        protocol_usage
-    )
-
-    if protocol_count >= 3:
-
-        score += 15
-
-        signals.append(
-            "Uses multiple known protocols"
-        )
-
-    elif protocol_count >= 2:
-
-        score += 10
-
-        signals.append(
-            "Uses multiple protocols"
-        )
-
-    elif protocol_count == 1:
-
-        score += 5
-
-        signals.append(
-            "Known protocol usage detected"
-        )
-
-    # ---------------------------------------------------------
-    # Unknown activity penalty
-    # ---------------------------------------------------------
-
-    if total > 0:
-
-        unknown_ratio = (
-            unknown / total
-        )
-
-        if unknown_ratio >= 0.75:
-
-            score -= 15
-
-            signals.append(
-                "High proportion of unknown activity"
-            )
-
-        elif unknown_ratio >= 0.50:
-
-            score -= 8
-
-            signals.append(
-                "Moderate unknown activity"
-            )
-
-    # ---------------------------------------------------------
-    # Liquidity activity
-    # ---------------------------------------------------------
-
-    if liquidity > 0:
-
-        score += 5
-
-        signals.append(
-            "Liquidity activity observed"
-        )
-
-    # ---------------------------------------------------------
-    # Clamp score
-    # ---------------------------------------------------------
-
-    score = max(
-        0.0,
-        min(
-            100.0,
-            score
-        )
-    )
+    score = max(0.0, min(100.0, score))
+    score = round(score, 1)
 
     # ---------------------------------------------------------
     # Rating
     # ---------------------------------------------------------
 
     if score >= 80:
-
         rating = "HIGH"
 
     elif score >= 60:
-
         rating = "GOOD"
 
     elif score >= 40:
-
         rating = "MODERATE"
 
-    elif score > 0:
-
+    elif score >= 20:
         rating = "LOW"
 
     else:
-
         rating = "UNKNOWN"
 
     return {
-
-        "score": round(
-            score,
-            2
-        ),
-
+        "score": score,
         "rating": rating,
-
         "signals": signals
     }

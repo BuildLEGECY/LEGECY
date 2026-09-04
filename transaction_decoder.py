@@ -1,36 +1,55 @@
 # LEGECY - Transaction Decoder
-# Uses wallet-specific changes + verified protocol registry
 
 from protocol_registry import identify_programs
 
 
 def classify_transaction(transaction):
     """
-    Classify a Solana transaction.
+    Classify a Solana wallet transaction.
 
-    Supports:
-    1. Legacy test input using transaction["meta"]
-    2. Wallet Intelligence input using:
-       wallet_sol_change
-       token_changes
-       programs
-       logs
+    Main events:
+
+    TOKEN_SWAP
+    SWAP_FAILED
+    POSSIBLE_BUY
+    POSSIBLE_SELL
+    POSSIBLE_LIQUIDITY
+    TRANSFER_RECEIVED
+    TRANSFER_SENT
+    SOL_RECEIVED
+    SOL_SENT
+    UNKNOWN
     """
 
     # ---------------------------------------------------------
-    # 1. Read wallet intelligence input
+    # Read wallet intelligence data
     # ---------------------------------------------------------
 
-    wallet_sol_change = transaction.get("wallet_sol_change")
-    token_changes = transaction.get("token_changes", [])
-    programs = transaction.get("programs", [])
-    logs = transaction.get("logs", [])
+    wallet_sol_change = transaction.get(
+        "wallet_sol_change"
+    )
+
+    token_changes = transaction.get(
+        "token_changes",
+        []
+    )
+
+    programs = transaction.get(
+        "programs",
+        []
+    )
+
+    logs = transaction.get(
+        "logs",
+        []
+    )
 
     # ---------------------------------------------------------
-    # 2. Backward compatibility with old decoder tests
+    # Legacy compatibility
     # ---------------------------------------------------------
 
     if wallet_sol_change is None:
+
         meta = transaction.get("meta")
 
         if not meta:
@@ -38,92 +57,146 @@ def classify_transaction(transaction):
                 "event": "UNKNOWN",
                 "confidence": 0.20,
                 "reason": "Transaction metadata unavailable",
+                "protocols": []
             }
 
-        pre_balances = meta.get("preBalances", [])
-        post_balances = meta.get("postBalances", [])
+        pre_balances = meta.get(
+            "preBalances",
+            []
+        )
+
+        post_balances = meta.get(
+            "postBalances",
+            []
+        )
 
         if pre_balances and post_balances:
             wallet_sol_change = (
-                post_balances[0] - pre_balances[0]
+                post_balances[0]
+                - pre_balances[0]
             ) / 1_000_000_000
 
         token_changes = []
 
-        pre_tokens = meta.get("preTokenBalances", [])
-        post_tokens = meta.get("postTokenBalances", [])
+        pre_tokens = meta.get(
+            "preTokenBalances",
+            []
+        )
+
+        post_tokens = meta.get(
+            "postTokenBalances",
+            []
+        )
 
         for token in post_tokens:
-            token_changes.append({
-                "mint": token.get("mint"),
-                "change": 1,
-                "direction": "received",
-            })
+            token_changes.append(
+                {
+                    "mint": token.get("mint"),
+                    "change": 1,
+                    "direction": "received"
+                }
+            )
 
         for token in pre_tokens:
-            token_changes.append({
-                "mint": token.get("mint"),
-                "change": -1,
-                "direction": "sent",
-            })
-
-        programs = transaction.get("programs", [])
-        logs = transaction.get("logs", [])
+            token_changes.append(
+                {
+                    "mint": token.get("mint"),
+                    "change": -1,
+                    "direction": "sent"
+                }
+            )
 
     # ---------------------------------------------------------
-    # 3. Normalize values
+    # Normalize SOL movement
     # ---------------------------------------------------------
 
     if wallet_sol_change is None:
         wallet_sol_change = 0.0
 
     try:
-        wallet_sol_change = float(wallet_sol_change)
+        wallet_sol_change = float(
+            wallet_sol_change
+        )
     except (TypeError, ValueError):
         wallet_sol_change = 0.0
 
     # ---------------------------------------------------------
-    # 4. Determine token movement
+    # Token movement
     # ---------------------------------------------------------
 
     token_received = False
     token_sent = False
 
+    received_mints = []
+    sent_mints = []
+
     for token in token_changes:
 
         direction = str(
-            token.get("direction", "")
+            token.get(
+                "direction",
+                ""
+            )
         ).lower()
 
-        change = token.get("change", 0)
+        change = token.get(
+            "change",
+            0
+        )
 
         try:
             change = float(change)
         except (TypeError, ValueError):
             change = 0
 
+        mint = token.get(
+            "mint"
+        )
+
         if direction in (
             "received",
             "receive",
-            "in",
+            "in"
         ):
             token_received = True
+
+            if mint:
+                received_mints.append(
+                    str(mint)
+                )
 
         elif direction in (
             "sent",
             "send",
-            "out",
+            "out"
         ):
             token_sent = True
 
+            if mint:
+                sent_mints.append(
+                    str(mint)
+                )
+
         elif change > 0:
+
             token_received = True
 
+            if mint:
+                received_mints.append(
+                    str(mint)
+                )
+
         elif change < 0:
+
             token_sent = True
 
+            if mint:
+                sent_mints.append(
+                    str(mint)
+                )
+
     # ---------------------------------------------------------
-    # 5. Identify verified protocols
+    # Verified protocols
     # ---------------------------------------------------------
 
     verified_protocols = identify_programs(
@@ -131,17 +204,29 @@ def classify_transaction(transaction):
     )
 
     protocol_names = [
-        protocol["name"]
+        protocol.get("name")
         for protocol in verified_protocols
+        if isinstance(protocol, dict)
+        and protocol.get("name")
     ]
 
     supports_swap = any(
-        "SWAP" in protocol.get("supports", [])
+        "SWAP" in protocol.get(
+            "supports",
+            []
+        )
         for protocol in verified_protocols
+        if isinstance(protocol, dict)
+    )
+
+    protocol_text = (
+        ", ".join(protocol_names)
+        if protocol_names
+        else "unknown protocol"
     )
 
     # ---------------------------------------------------------
-    # 6. Inspect logs for swap/liquidity instructions
+    # Logs
     # ---------------------------------------------------------
 
     log_text = " ".join(
@@ -149,35 +234,131 @@ def classify_transaction(transaction):
         for log in logs
     )
 
-    # Explicit swap instructions
-    swap_in_log = (
-        "instruction: swap" in log_text
-        or "instruction: swapv2" in log_text
-        or "instruction: exactinput" in log_text
-        or "instruction: exactoutput" in log_text
+    # ---------------------------------------------------------
+    # Detect swap instruction
+    # ---------------------------------------------------------
+
+    swap_patterns = (
+        "instruction: swap",
+        "instruction: swapv2",
+        "instruction: exactinput",
+        "instruction: exactoutput",
+        "instruction: swapexactin",
+        "instruction: swapexactout",
+        "instruction: swap2",
+        "instruction: swaps",
+        "instruction: swapwith",
     )
 
-    # Explicit liquidity instructions
-    liquidity_in_log = (
-        "instruction: addliquidity" in log_text
-        or "instruction: removeliquidity" in log_text
-        or "instruction: increase_liquidity" in log_text
-        or "instruction: decrease_liquidity" in log_text
-        or "instruction: add_liquidity" in log_text
-        or "instruction: remove_liquidity" in log_text
-        or "instruction: deposit" in log_text
-        or "instruction: withdraw" in log_text
+    swap_in_log = any(
+        pattern in log_text
+        for pattern in swap_patterns
+    )
+
+    # Jupiter/OpenBook-style execution can use Fill.
+    fill_in_log = (
+        "instruction: fill" in log_text
     )
 
     # ---------------------------------------------------------
-    # 7. LIQUIDITY detection
+    # Detect liquidity instructions
     # ---------------------------------------------------------
+
+    liquidity_patterns = (
+        "instruction: addliquidity",
+        "instruction: removeliquidity",
+        "instruction: increase_liquidity",
+        "instruction: decrease_liquidity",
+        "instruction: add_liquidity",
+        "instruction: remove_liquidity",
+        "instruction: deposit",
+        "instruction: withdraw",
+        "instruction: openposition",
+        "instruction: closeposition",
+        "instruction: increaseposition",
+        "instruction: decreaseposition",
+    )
+
+    liquidity_in_log = any(
+        pattern in log_text
+        for pattern in liquidity_patterns
+    )
+
+    # ---------------------------------------------------------
+    # Detect failed transaction
+    # ---------------------------------------------------------
+
+    failure_patterns = (
+        "program failed",
+        "custom program error",
+        "anchorerror",
+        "error code:",
+        "error number:",
+        "error message:",
+        "failed:",
+    )
+
+    transaction_failed = any(
+        pattern in log_text
+        for pattern in failure_patterns
+    )
+
+    # ---------------------------------------------------------
+    # FAILED SWAP
     #
-    # IMPORTANT:
-    # A protocol supporting LIQUIDITY does NOT mean every
-    # transaction on that protocol is a liquidity action.
+    # A swap was attempted but the transaction failed.
     #
-    # We require explicit liquidity instruction evidence.
+    # We require:
+    # - swap/fill evidence
+    # - failure evidence
+    # - no actual token movement
+    #
+    # This prevents failed swaps from being counted
+    # as successful trades.
+    # ---------------------------------------------------------
+
+    if (
+        (swap_in_log or fill_in_log)
+        and transaction_failed
+        and not token_received
+        and not token_sent
+    ):
+
+        return {
+            "event": "SWAP_FAILED",
+            "confidence": 0.95,
+            "reason": (
+                "Swap instruction was attempted but "
+                f"the transaction failed on "
+                f"{protocol_text}"
+            ),
+            "protocols": verified_protocols
+        }
+
+    # ---------------------------------------------------------
+    # FAILED LIQUIDITY
+    # ---------------------------------------------------------
+
+    if (
+        liquidity_in_log
+        and transaction_failed
+        and not token_received
+        and not token_sent
+    ):
+
+        return {
+            "event": "LIQUIDITY_FAILED",
+            "confidence": 0.95,
+            "reason": (
+                "Liquidity instruction was attempted "
+                f"but the transaction failed on "
+                f"{protocol_text}"
+            ),
+            "protocols": verified_protocols
+        }
+
+    # ---------------------------------------------------------
+    # LIQUIDITY
     # ---------------------------------------------------------
 
     if (
@@ -186,41 +367,86 @@ def classify_transaction(transaction):
         and token_sent
     ):
 
-        protocol_text = (
-            ", ".join(protocol_names)
-            if protocol_names
-            else "known liquidity protocol"
-        )
-
         return {
             "event": "POSSIBLE_LIQUIDITY",
-            "confidence": 0.80,
+            "confidence": 0.90,
             "reason": (
-                f"Token movement matches liquidity activity "
-                f"on {protocol_text}"
+                "Token movements and liquidity "
+                f"instruction detected on "
+                f"{protocol_text}"
             ),
-            "protocols": verified_protocols,
+            "protocols": verified_protocols
         }
 
     # ---------------------------------------------------------
-    # 8. SWAP / BUY detection
+    # TOKEN-TO-TOKEN SWAP
+    # ---------------------------------------------------------
+
+    if (
+        token_sent
+        and token_received
+        and swap_in_log
+        and not transaction_failed
+    ):
+
+        return {
+            "event": "TOKEN_SWAP",
+            "confidence": 0.90,
+            "reason": (
+                "Wallet sent one token and received "
+                f"another token; successful swap "
+                f"detected on {protocol_text}"
+            ),
+            "protocols": verified_protocols
+        }
+
+    # ---------------------------------------------------------
+    # TOKEN-TO-TOKEN SWAP
+    #
+    # Some protocols may not expose a standard Swap log.
+    # Verified protocol + both token directions is enough.
+    # ---------------------------------------------------------
+
+    if (
+        token_sent
+        and token_received
+        and supports_swap
+        and not transaction_failed
+    ):
+
+        return {
+            "event": "TOKEN_SWAP",
+            "confidence": 0.85,
+            "reason": (
+                "Wallet sent and received tokens "
+                f"through verified swap protocol "
+                f"{protocol_text}"
+            ),
+            "protocols": verified_protocols
+        }
+
+    # ---------------------------------------------------------
+    # BUY
+    #
+    # SOL decreases and token increases.
+    # No token was sent.
     # ---------------------------------------------------------
 
     if (
         token_received
+        and not token_sent
         and wallet_sol_change < 0
+        and not transaction_failed
     ):
 
         confidence = 0.50
 
-        if supports_swap or swap_in_log:
+        if (
+            supports_swap
+            or swap_in_log
+            or fill_in_log
+        ):
             confidence += 0.20
-
-        protocol_text = (
-            ", ".join(protocol_names)
-            if protocol_names
-            else "unknown protocol"
-        )
 
         return {
             "event": "POSSIBLE_BUY",
@@ -229,31 +455,35 @@ def classify_transaction(transaction):
                 1.0
             ),
             "reason": (
-                f"Wallet spent SOL and received a token; "
-                f"swap evidence: {protocol_text}"
+                "Wallet spent SOL and received "
+                f"a token; swap evidence: "
+                f"{protocol_text}"
             ),
-            "protocols": verified_protocols,
+            "protocols": verified_protocols
         }
 
     # ---------------------------------------------------------
-    # 9. SWAP / SELL detection
+    # SELL
+    #
+    # Token decreases and SOL increases.
+    # No token was received.
     # ---------------------------------------------------------
 
     if (
         token_sent
+        and not token_received
         and wallet_sol_change > 0
+        and not transaction_failed
     ):
 
         confidence = 0.50
 
-        if supports_swap or swap_in_log:
+        if (
+            supports_swap
+            or swap_in_log
+            or fill_in_log
+        ):
             confidence += 0.20
-
-        protocol_text = (
-            ", ".join(protocol_names)
-            if protocol_names
-            else "unknown protocol"
-        )
 
         return {
             "event": "POSSIBLE_SELL",
@@ -262,19 +492,22 @@ def classify_transaction(transaction):
                 1.0
             ),
             "reason": (
-                f"Wallet received SOL and sent a token; "
-                f"swap evidence: {protocol_text}"
+                "Wallet received SOL and sent "
+                f"a token; swap evidence: "
+                f"{protocol_text}"
             ),
-            "protocols": verified_protocols,
+            "protocols": verified_protocols
         }
 
     # ---------------------------------------------------------
-    # 10. Token transfer received
+    # TOKEN TRANSFER RECEIVED
     # ---------------------------------------------------------
 
     if (
         token_received
+        and not token_sent
         and wallet_sol_change >= 0
+        and not transaction_failed
     ):
 
         return {
@@ -284,16 +517,18 @@ def classify_transaction(transaction):
                 "Wallet received a token "
                 "without spending SOL"
             ),
-            "protocols": verified_protocols,
+            "protocols": verified_protocols
         }
 
     # ---------------------------------------------------------
-    # 11. Token transfer sent
+    # TOKEN TRANSFER SENT
     # ---------------------------------------------------------
 
     if (
         token_sent
+        and not token_received
         and wallet_sol_change <= 0
+        and not transaction_failed
     ):
 
         return {
@@ -303,11 +538,59 @@ def classify_transaction(transaction):
                 "Wallet sent a token "
                 "without receiving SOL"
             ),
-            "protocols": verified_protocols,
+            "protocols": verified_protocols
         }
 
     # ---------------------------------------------------------
-    # 12. Unknown
+    # SOL RECEIVED
+    # ---------------------------------------------------------
+
+    if (
+        wallet_sol_change > 0
+        and not token_received
+        and not token_sent
+        and not swap_in_log
+        and not fill_in_log
+        and not liquidity_in_log
+        and not transaction_failed
+    ):
+
+        return {
+            "event": "SOL_RECEIVED",
+            "confidence": 0.80,
+            "reason": (
+                "Wallet received SOL "
+                "without token movement"
+            ),
+            "protocols": verified_protocols
+        }
+
+    # ---------------------------------------------------------
+    # SOL SENT
+    # ---------------------------------------------------------
+
+    if (
+        wallet_sol_change < 0
+        and not token_received
+        and not token_sent
+        and not swap_in_log
+        and not fill_in_log
+        and not liquidity_in_log
+        and not transaction_failed
+    ):
+
+        return {
+            "event": "SOL_SENT",
+            "confidence": 0.80,
+            "reason": (
+                "Wallet sent SOL "
+                "without token movement"
+            ),
+            "protocols": verified_protocols
+        }
+
+    # ---------------------------------------------------------
+    # UNKNOWN
     # ---------------------------------------------------------
 
     return {
@@ -316,5 +599,5 @@ def classify_transaction(transaction):
         "reason": (
             "No reliable transaction pattern detected"
         ),
-        "protocols": verified_protocols,
+        "protocols": verified_protocols
     }
