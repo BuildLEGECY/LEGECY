@@ -4,7 +4,7 @@ from typing import Any,Dict,Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI,HTTPException,Query,Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse,HTMLResponse
 from pydantic import BaseModel,Field
 from solders.pubkey import Pubkey
 from smart_wallet_discovery import discover_smart_wallets
@@ -14,7 +14,7 @@ from wallet_intelligence_fast import build_wallet_profile
 from wallet_profile import build_profile_summary
 from watchlist_api import router as watchlist_router
 load_dotenv()
-APP_ENV=os.getenv('APP_ENV','development').strip().lower();API_VERSION='2.2.0';BASE_DIR=Path(__file__).resolve().parent;DASHBOARD_FILE=BASE_DIR/'dashboard'/'index.html'
+APP_ENV=os.getenv('APP_ENV','development').strip().lower();API_VERSION='2.2.0';BASE_DIR=Path(__file__).resolve().parent;DASHBOARD_FILE=BASE_DIR/'dashboard'/'index.html';DASHBOARD_ENHANCEMENTS=BASE_DIR/'dashboard'/'dashboard_enhancements.js'
 RATE_LIMIT_REQUESTS=int(os.getenv('RATE_LIMIT_REQUESTS','20'));RATE_LIMIT_WINDOW_SECONDS=int(os.getenv('RATE_LIMIT_WINDOW_SECONDS','60'));ANALYSIS_TIMEOUT_SECONDS=int(os.getenv('ANALYSIS_TIMEOUT_SECONDS','45'));CACHE_TTL_SECONDS=int(os.getenv('CACHE_TTL_SECONDS','15'));CACHE_MAX_ENTRIES=int(os.getenv('CACHE_MAX_ENTRIES','100'));DEFAULT_HISTORY_LIMIT=int(os.getenv('DEFAULT_HISTORY_LIMIT','20'));MAX_HISTORY_LIMIT=int(os.getenv('MAX_HISTORY_LIMIT','100'));DEFAULT_HISTORY_LIMIT=max(1,min(DEFAULT_HISTORY_LIMIT,MAX_HISTORY_LIMIT));MAX_HISTORY_LIMIT=max(DEFAULT_HISTORY_LIMIT,MAX_HISTORY_LIMIT)
 _rate_limit_state={};_wallet_cache={};_metrics={'requests_total':0,'responses_2xx':0,'responses_4xx':0,'responses_5xx':0,'wallet_analysis_requests':0,'wallet_analysis_success':0,'wallet_analysis_errors':0,'wallet_analysis_timeouts':0,'rate_limit_rejections':0,'cache_hits':0,'cache_misses':0,'total_response_time_ms':0.0,'wallet_analysis_time_ms':0.0,'comparison_requests':0,'comparison_success':0,'comparison_errors':0,'discovery_requests':0,'discovery_success':0,'discovery_errors':0,'ranking_requests':0,'ranking_success':0,'ranking_errors':0}
 CORS_ORIGINS=[x.strip() for x in os.getenv('CORS_ORIGINS','http://127.0.0.1:5500,http://localhost:5500').split(',') if x.strip()];logging.basicConfig(level=os.getenv('LOG_LEVEL','INFO').upper());logger=logging.getLogger('legecy-api')
@@ -70,8 +70,16 @@ async def _analyze_for_compare(wallet:str,limit:int):
  _metrics['cache_misses']+=1;profile=await build_wallet_profile(wallet,limit=limit);cache_wallet_profile(wallet,profile,limit);return profile
 @app.get('/',tags=['Public'],summary='Open the LEGECY dashboard')
 async def root():
- if DASHBOARD_FILE.exists():return FileResponse(DASHBOARD_FILE,media_type='text/html')
+ if DASHBOARD_FILE.exists():
+  html=DASHBOARD_FILE.read_text(encoding='utf-8')
+  if DASHBOARD_ENHANCEMENTS.exists() and 'dashboard_enhancements.js' not in html:
+   html=html.replace('</body>','<script src="/dashboard-enhancements.js"></script></body>')
+  return HTMLResponse(html)
  return {'name':'LEGECY','service':'Solana Wallet Intelligence API','status':'online','version':API_VERSION,'environment':APP_ENV}
+@app.get('/dashboard-enhancements.js',tags=['Public'],include_in_schema=False)
+async def dashboard_enhancements():
+ if not DASHBOARD_ENHANCEMENTS.exists():raise HTTPException(status_code=404,detail={'message':'Dashboard enhancements are not available.'})
+ return FileResponse(DASHBOARD_ENHANCEMENTS,media_type='application/javascript')
 @app.get('/api',tags=['Public'],summary='Get API information')
 async def api_info():return {'name':'LEGECY','service':'Solana Wallet Intelligence API','status':'online','version':API_VERSION,'environment':APP_ENV}
 @app.get('/health',tags=['Public'],summary='Check API health')
