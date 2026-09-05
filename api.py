@@ -19,7 +19,7 @@ load_dotenv()
 
 
 APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
-API_VERSION = "1.2.0"
+API_VERSION = "1.3.0"
 
 BASE_DIR = Path(__file__).resolve().parent
 DASHBOARD_FILE = BASE_DIR / "dashboard" / "index.html"
@@ -51,8 +51,16 @@ logger = logging.getLogger("legecy-api")
 
 app = FastAPI(
     title="LEGECY Wallet Intelligence API",
-    description="Solana wallet intelligence, reputation and smart-money analysis.",
+    description=(
+        "Public API for Solana wallet intelligence, reputation, trading "
+        "behavior, data confidence and smart-money analysis."
+    ),
     version=API_VERSION,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    contact={"name": "LEGECY"},
+    license_info={"name": "Project License"},
 )
 
 
@@ -104,9 +112,7 @@ async def request_logging_middleware(request: Request, call_next):
 
 
 def validate_wallet_address(wallet_address: str) -> str:
-    """
-    Validate and normalize a Solana wallet address.
-    """
+    """Validate and normalize a Solana wallet address."""
     wallet_address = wallet_address.strip()
 
     if not wallet_address:
@@ -161,7 +167,13 @@ def check_rate_limit(request: Request) -> None:
             _rate_limit_state.pop(ip, None)
 
 
-@app.get("/")
+@app.get(
+    "/",
+    tags=["Public"],
+    summary="Open the LEGECY dashboard",
+    description="Serve the public LEGECY wallet-intelligence dashboard.",
+    response_description="The LEGECY dashboard HTML page.",
+)
 async def root():
     """Serve the public LEGECY dashboard."""
     if DASHBOARD_FILE.exists():
@@ -176,7 +188,13 @@ async def root():
     }
 
 
-@app.get("/api")
+@app.get(
+    "/api",
+    tags=["Public"],
+    summary="Get API information",
+    description="Return service metadata and the currently deployed API version.",
+    response_description="LEGECY API service information.",
+)
 async def api_info():
     return {
         "name": "LEGECY",
@@ -187,7 +205,13 @@ async def api_info():
     }
 
 
-@app.get("/health")
+@app.get(
+    "/health",
+    tags=["Public"],
+    summary="Check API health",
+    description="Lightweight health check intended for monitoring and deployment systems.",
+    response_description="Current API health status.",
+)
 async def health():
     return {
         "status": "ok",
@@ -197,7 +221,33 @@ async def health():
     }
 
 
-@app.get("/wallet/{wallet_address}")
+@app.get(
+    "/wallet/{wallet_address}",
+    tags=["Wallet Intelligence"],
+    summary="Analyze a Solana wallet",
+    description=(
+        "Analyze recent on-chain activity for a Solana wallet and return a "
+        "normalized intelligence profile. The response can include transaction "
+        "coverage, activity metrics, token and protocol information, trading "
+        "performance, behavior signals, reputation, smart-money scoring and "
+        "data-confidence information."
+    ),
+    response_description="Normalized LEGECY wallet intelligence profile.",
+    responses={
+        400: {
+            "description": "The supplied wallet address is invalid or cannot be processed."
+        },
+        429: {
+            "description": "The client exceeded the wallet-analysis request limit."
+        },
+        500: {
+            "description": "An unexpected wallet-analysis error occurred."
+        },
+        504: {
+            "description": "Wallet analysis exceeded the configured timeout."
+        },
+    },
+)
 async def analyze_wallet(wallet_address: str, request: Request):
     check_rate_limit(request)
     wallet_address = validate_wallet_address(wallet_address)
