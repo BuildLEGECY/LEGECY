@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import time
@@ -18,10 +19,18 @@ load_dotenv()
 
 
 APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
-API_VERSION = "1.1.0"
+API_VERSION = "1.2.0"
 
 BASE_DIR = Path(__file__).resolve().parent
 DASHBOARD_FILE = BASE_DIR / "dashboard" / "index.html"
+
+# Lightweight production protection. This intentionally uses only the
+# standard library so deployment does not need another dependency.
+RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "20"))
+RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+ANALYSIS_TIMEOUT_SECONDS = int(os.getenv("ANALYSIS_TIMEOUT_SECONDS", "45"))
+
+_rate_limit_state = {}
 
 CORS_ORIGINS = [
     origin.strip()
@@ -117,6 +126,41 @@ def validate_wallet_address(wallet_address: str) -> str:
     return wallet_address
 
 
+def check_rate_limit(request: Request) -> None:
+    """Apply a small per-client limit to expensive wallet analysis calls."""
+    now = time.monotonic()
+    client_ip = request.client.host if request.client else "unknown"
+
+    window_start, request_count = _rate_limit_state.get(client_ip, (now, 0))
+
+    if now - window_start >= RATE_LIMIT_WINDOW_SECONDS:
+        window_start = now
+        request_count = 0
+
+    if request_count >= RATE_LIMIT_REQUESTS:
+        retry_after = max(1, int(RATE_LIMIT_WINDOW_SECONDS - (now - window_start)))
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": "Too many wallet analysis requests. Please try again later."
+            },
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    _rate_limit_state[client_ip] = (window_start, request_count + 1)
+
+    # Prevent stale client entries from growing forever on long-running servers.
+    if len(_rate_limit_state) > 1000:
+        cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+        stale = [
+            ip
+            for ip, (started, _) in _rate_limit_state.items()
+            if started < cutoff
+        ]
+        for ip in stale:
+            _rate_limit_state.pop(ip, None)
+
+
 @app.get("/")
 async def root():
     """Serve the public LEGECY dashboard."""
@@ -154,19 +198,36 @@ async def health():
 
 
 @app.get("/wallet/{wallet_address}")
-async def analyze_wallet(wallet_address: str):
+async def analyze_wallet(wallet_address: str, request: Request):
+    check_rate_limit(request)
     wallet_address = validate_wallet_address(wallet_address)
 
     try:
-        profile = await build_wallet_profile(
-            wallet_address,
-            limit=20,
+        profile = await asyncio.wait_for(
+            build_wallet_profile(
+                wallet_address,
+                limit=20,
+            ),
+            timeout=ANALYSIS_TIMEOUT_SECONDS,
         )
 
         return build_profile_summary(profile)
 
     except HTTPException:
         raise
+
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Wallet analysis timed out for wallet=%s timeout_seconds=%s",
+            wallet_address,
+            ANALYSIS_TIMEOUT_SECONDS,
+        )
+        raise HTTPException(
+            status_code=504,
+            detail={
+                "message": "Wallet analysis timed out. Please try again later.",
+            },
+        )
 
     except ValueError:
         raise HTTPException(
