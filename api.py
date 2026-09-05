@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from solders.pubkey import Pubkey
 
-from wallet_intelligence import build_wallet_profile
+from wallet_intelligence_fast import build_wallet_profile
 from wallet_profile import build_profile_summary
 
 
@@ -19,7 +19,7 @@ load_dotenv()
 
 
 APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
-API_VERSION = "1.4.0"
+API_VERSION = "1.5.0"
 
 BASE_DIR = Path(__file__).resolve().parent
 DASHBOARD_FILE = BASE_DIR / "dashboard" / "index.html"
@@ -267,7 +267,8 @@ async def health():
         "coverage, activity metrics, token and protocol information, trading "
         "performance, behavior signals, reputation, smart-money scoring and "
         "data-confidence information. Repeated requests for the same wallet "
-        "may be served from a short-lived cache."
+        "may be served from a short-lived cache. Transaction analysis uses "
+        "bounded concurrent RPC requests for better latency."
     ),
     response_description="Normalized LEGECY wallet intelligence profile.",
     responses={
