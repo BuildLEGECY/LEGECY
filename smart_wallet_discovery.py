@@ -71,11 +71,18 @@ def _discovery_score(interactions, candidate_count, profile):
         reputation_score = reputation_score.get("score", 0)
     reputation_score = float(reputation_score or 0)
     confidence = float(data_confidence.get("score", 0) or 0)
+    confidence = max(0.0, min(100.0, confidence))
 
     interaction_signal = min(interactions * 10, 30)
-    intelligence_signal = smart_score * 0.45 + reputation_score * 0.25 + confidence * 0.10
+    intelligence_signal = smart_score * 0.45 + reputation_score * 0.25
     diversity_signal = min(candidate_count * 5, 15)
-    return round(min(100, interaction_signal + intelligence_signal + diversity_signal), 2)
+    base_score = interaction_signal + intelligence_signal + diversity_signal
+
+    # Discovery rankings must reflect evidence quality. A candidate with no
+    # usable analyzed transactions should never look highly ranked merely
+    # because it co-signed a transaction.
+    quality_adjusted_score = base_score * (confidence / 100.0)
+    return round(min(100, quality_adjusted_score), 2)
 
 
 async def discover_smart_wallets(
@@ -104,12 +111,15 @@ async def discover_smart_wallets(
         ranked = interactions.most_common(candidate_limit * 2)
         ranked = [item for item in ranked if item[0] != seed_wallet][:candidate_limit]
 
+    candidate_semaphore = asyncio.Semaphore(DISCOVERY_CONCURRENCY)
+
     async def analyze_candidate(address):
-        try:
-            profile = await build_wallet_profile(address, limit=candidate_history_limit)
-            return address, profile
-        except Exception:
-            return address, None
+        async with candidate_semaphore:
+            try:
+                profile = await build_wallet_profile(address, limit=candidate_history_limit)
+                return address, profile
+            except Exception:
+                return address, None
 
     candidates = await asyncio.gather(*(analyze_candidate(address) for address, _ in ranked))
 
