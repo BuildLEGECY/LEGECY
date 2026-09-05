@@ -162,7 +162,9 @@ async def security_headers_middleware(request: Request, call_next):
             "max-age=31536000; includeSubDomains",
         )
 
-    response.headers.pop("Server", None)
+    if "Server" in response.headers:
+        del response.headers["Server"]
+
     return response
 
 
