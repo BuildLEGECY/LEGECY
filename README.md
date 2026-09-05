@@ -39,6 +39,65 @@ Given a wallet address, LEGECY can:
 
 ---
 
+## Real end-to-end proof
+
+LEGECY is designed to be understood from **input → processing → evidence → intelligence**, not just from a list of features.
+
+### Example: enter a wallet, get intelligence
+
+**Input**
+
+```text
+Wallet: BC2JZCGY6sXbQdXoqNzxm7JZxf9Q1bue8Ue9rAgbdwA7
+Transaction history requested: 20
+```
+
+**Pipeline**
+
+```text
+Solana Wallet
+      ↓
+Transaction History
+      ↓
+Transaction Decoder
+      ↓
+Protocol Detection
+      ↓
+Swap / Trade Extraction
+      ↓
+Wallet Statistics
+      ↓
+Behavior Analysis
+      ↓
+Reputation Engine
+      ↓
+Smart Money Engine
+      ↓
+Final Wallet Profile
+```
+
+**Production QA result**
+
+| Signal | Result |
+|---|---:|
+| Reputation | 64 / 100 |
+| Reputation rating | MODERATE |
+| Data confidence | 50% coverage |
+| Smart Money score | 63.3 / 100 |
+| Smart Money rating | MODERATE |
+| Protocol observed | Raydium AMM v4 |
+| Open positions | None |
+
+These values demonstrate the actual output shape and intelligence flow captured during production QA. They are not predictions of future performance.
+
+### The important part: confidence is visible
+
+LEGECY does not hide incomplete data. A wallet profile tracks requested, analyzed, and unavailable transactions and exposes coverage/confidence alongside the intelligence. Smart Money scoring uses that confidence so incomplete data cannot simply look like strong intelligence.
+
+For more concrete endpoint examples, see [`examples/wallet_analysis.md`](examples/wallet_analysis.md) and [`examples/intelligence_endpoints.md`](examples/intelligence_endpoints.md).
+
+---
+
 ## Architecture
 
 The current architecture is intentionally modular so individual intelligence layers can be improved without rewriting the whole system.
@@ -347,6 +406,7 @@ The test suite covers transaction classification, decoding, protocol detection, 
 - [x] API security hardening
 - [x] Automated regression testing
 - [x] Railway production deployment
+- [x] Real end-to-end proof examples
 
 ### In progress / next evolution
 
