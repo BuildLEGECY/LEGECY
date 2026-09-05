@@ -30,6 +30,25 @@
       @media(max-width:800px){.hero{min-height:650px!important}.le-visual{position:absolute;right:50%;transform:translateX(50%);top:350px;width:520px;height:360px;opacity:1}.le-mascot{width:270px;height:270px;left:125px;top:25px}.le-glow{width:300px;height:300px;left:110px;top:15px}.le-orbit{width:390px;height:300px;left:65px;top:10px}.le-float-card{transform:scale(.82)}.le-f1{left:35px;top:35px}.le-f2{right:35px;top:75px}.le-f3{left:55px;bottom:5px}.le-f4{right:45px;bottom:20px}.le-nav{display:flex}.le-feature-strip,.le-stats,.le-why{grid-template-columns:1fr 1fr}.le-enhance-grid{grid-template-columns:1fr}.le-section-intro{display:block}.le-section-intro p{margin-top:12px}}
       @media(max-width:680px){header{height:auto!important;min-height:74px!important;padding:12px 0!important;flex-wrap:wrap;gap:10px}.brand{order:1}.le-countdown{order:3;width:100%;margin:0!important;justify-content:center;padding:8px 10px}.le-countdown-status{padding-right:10px}.le-countdown-copy span{display:none}.le-countdown-time{gap:4px}.le-countdown-unit{min-width:34px}.le-countdown-unit b{font-size:16px}.le-countdown-sep{font-size:15px}.le-nav{order:4;margin:0!important;gap:14px}.header-right{order:2;margin-left:auto;gap:12px}.le-social{gap:12px}.le-social a{font-size:13px}}
       @media(max-width:560px){.container{width:94%!important}.mark{width:44px!important;height:44px!important}.logo{font-size:19px!important}.hero{padding-top:42px!important;min-height:650px!important}.hero h1{letter-spacing:-2.6px!important;font-size:clamp(42px,12vw,62px)!important}.hero p{font-size:15px!important}.le-visual{top:360px;width:390px;height:285px}.le-mascot{width:220px;height:220px;left:85px}.le-glow{width:250px;height:250px;left:70px}.le-orbit{width:300px;height:235px;left:45px}.le-float-card{min-width:115px;padding:9px 10px;transform:scale(.72)}.le-f1{left:0;top:25px}.le-f2{right:0;top:55px}.le-f3{left:15px;bottom:0}.le-f4{right:5px;bottom:5px}.search{flex-direction:column}.search button{height:48px}.le-feature-strip,.le-stats,.le-why{grid-template-columns:1fr}.le-stat{border-right:0;border-bottom:1px solid #e4ede8}.le-stat:last-child{border-bottom:0}.le-section-intro h2{font-size:31px}.le-grid{grid-template-columns:1fr 1fr}footer{display:block;line-height:2}}
+      /* visual refinement: shared icon treatment */
+      .le-float-card:before,.le-feature .ico,.le-why-card .ico{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#f0fff7;border:1px solid #ccebdd;color:var(--green);font:800 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace;box-sizing:border-box}
+      .le-float-card:before{content:"↗";position:absolute;left:12px;top:12px}
+      .le-float-card{padding-left:53px;position:absolute}
+      .le-float-card strong{margin-bottom:4px}
+      .le-feature .ico,.le-why-card .ico{width:38px;height:38px;border-radius:50%;font-size:17px;flex:0 0 38px}
+      .le-float-card:nth-of-type(4):before{color:var(--purple);background:#f5f1ff;border-color:#ddd3ff}
+      .le-float-card:nth-of-type(5):before{color:var(--green);background:#f0fff7;border-color:#ccebdd}
+      .le-float-card:nth-of-type(6):before{color:var(--purple);background:#f5f1ff;border-color:#ddd3ff}
+      .le-float-card:nth-of-type(7):before{color:var(--green);background:#f0fff7;border-color:#ccebdd}
+      .le-feature:nth-child(2) .ico,.le-why-card:nth-child(2) .ico{color:var(--purple);background:#f5f1ff;border-color:#ddd3ff}
+      .le-feature:nth-child(1) .ico,.le-feature:nth-child(4) .ico,.le-why-card:nth-child(1) .ico,.le-why-card:nth-child(4) .ico{color:var(--green);background:#f0fff7;border-color:#ccebdd}
+      .le-feature:nth-child(3) .ico,.le-why-card:nth-child(3) .ico{color:#4e7bc7;background:#f1f6ff;border-color:#d6e2fb}
+      .le-connector-layer{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;z-index:0}
+      .le-connector{fill:none;stroke-width:1.15;stroke-linecap:round;opacity:.46;stroke-dasharray:4 5}
+      .le-connector-dot{r:2.5;opacity:.65}
+      .le-connector-node{r:2;opacity:.7}
+      .le-float-card{z-index:3}
+      @media(max-width:800px){.le-connector{opacity:.3}.le-connector-layer{display:none}.le-float-card{padding-left:47px}}
     `; document.head.appendChild(s);
   }
   function navigation(){const h=document.querySelector("header");if(!h)return;h.innerHTML=`<div class="brand"><div class="mark" aria-label="LEGECY logo" title="LEGECY"><span style="display:none">L</span></div><div class="logo">LEGECY<span>.</span></div></div><div class="le-countdown" aria-label="Next LEGECY milestone countdown"><div class="le-countdown-status"><i class="le-countdown-dot"></i><div class="le-countdown-copy"><strong>NEXT MILESTONE</strong><span>A SMARTER ON-CHAIN FUTURE</span></div></div><div class="le-countdown-time"><div class="le-countdown-unit"><b id="leDays">00</b><span>Days</span></div><div class="le-countdown-sep">:</div><div class="le-countdown-unit"><b id="leHours">00</b><span>Hours</span></div><div class="le-countdown-sep">:</div><div class="le-countdown-unit"><b id="leMinutes">00</b><span>Minutes</span></div><div class="le-countdown-sep">:</div><div class="le-countdown-unit"><b id="leSeconds">00</b><span>Seconds</span></div></div></div><nav class="le-nav"><a href="/docs/">Docs</a></nav><div class="header-right"><div class="le-social"><a href="https://x.com/BuildLEGECY" target="_blank" rel="noopener noreferrer" aria-label="LEGECY on X">𝕏</a><a href="https://github.com/BuildLEGECY/LEGECY" target="_blank" rel="noopener noreferrer" aria-label="LEGECY on GitHub">GitHub</a></div></div>`; startCountdown()}
@@ -43,13 +62,53 @@
   }
   function heroVisual(){if(document.getElementById("legecyHeroVisual"))return;const hero=document.querySelector(".hero");if(!hero)return;const v=document.createElement("div");v.id="legecyHeroVisual";v.className="le-visual";v.innerHTML=`<div class="le-glow"></div><div class="le-orbit"></div><img class="le-mascot" src="${MASCOT}" alt="LEGECY mascot"><div class="le-float-card le-f1"><strong>Smart Money</strong><b>+82%</b><br>Detected</div><div class="le-float-card le-f2"><strong>On-chain Signals</strong><b>100+</b><br>Analyzed</div><div class="le-float-card le-f3"><strong>Reputation</strong><b>82</b><br>Wallet score</div><div class="le-float-card le-f4"><strong>Live Intelligence</strong><b>●</b><br>Solana activity</div>`;hero.appendChild(v)}
   function heroExtras(){if(document.getElementById("legecyFeatureStrip"))return;const hero=document.querySelector(".hero");if(!hero)return;const fs=document.createElement("div");fs.id="legecyFeatureStrip";fs.className="le-feature-strip";fs.innerHTML=`<div class="le-feature"><div class="ico">⌕</div><div><strong>Wallet Intelligence</strong><span>Deep wallet analysis</span></div></div><div class="le-feature"><div class="ico">▥</div><div><strong>Smart Money</strong><span>Find top performers</span></div></div><div class="le-feature"><div class="ico">▣</div><div><strong>Wallet Comparison</strong><span>Compare wallets</span></div></div><div class="le-feature"><div class="ico">◈</div><div><strong>On-chain Insights</strong><span>Data you can trust</span></div></div>`;hero.insertAdjacentElement("afterend",fs);const stats=document.createElement("div");stats.className="le-stats";stats.innerHTML=`<div class="le-stat"><b>1M+</b><span>Wallets Analyzed</span></div><div class="le-stat"><b>100+</b><span>On-chain Signals</span></div><div class="le-stat"><b>Real-time</b><span>Data Updates</span></div><div class="le-stat"><b>Built</b><span>In Public</span></div>`;fs.insertAdjacentElement("afterend",stats);const intro=document.createElement("div");intro.className="le-section-intro";intro.innerHTML=`<div><div class="eyebrow">WHY LEGECY</div><h2>More Than Just <span style="color:var(--green)">Data.</span></h2></div><p>We turn on-chain data into actionable intelligence, so you can make smarter decisions.</p>`;stats.insertAdjacentElement("afterend",intro);const why=document.createElement("div");why.className="le-why";why.innerHTML=`<div class="le-why-card"><div class="ico">◉</div><h3>Analyze Wallets</h3><p>Get deep insights into trading behavior, reputation and activity.</p></div><div class="le-why-card"><div class="ico">◌</div><h3>Find Smart Money</h3><p>Discover stronger wallets using confidence-aware intelligence.</p></div><div class="le-why-card"><div class="ico">▦</div><h3>Compare Wallets</h3><p>See wallet performance side by side with clear signals.</p></div><div class="le-why-card"><div class="ico">⌁</div><h3>Track Opportunities</h3><p>Keep important wallets close with persistent watchlists.</p></div>`;intro.insertAdjacentElement("afterend",why)}
-  let currentWallet="";
   function panels(){if(document.getElementById("legecyEnhancements"))return;const d=document.getElementById("dashboard");if(!d)return;const s=document.createElement("section");s.id="legecyEnhancements";s.className="le-enhance-grid";s.innerHTML=`<div class="card"><div class="section-title"><h3>Watchlist</h3><span>Tracked wallets</span></div><div class="le-form"><input id="leWatchLabel" class="le-input" placeholder="Label for current wallet"><button id="leWatchAdd" class="le-btn primary">Add wallet</button></div><div id="leWatchCurrent" class="le-current">Analyze a wallet to add it to your watchlist.</div><div id="leWatchList" class="le-empty">Loading watchlist…</div></div><div class="card"><div class="section-title"><h3>Smart Money Ranking</h3><span>Confidence-adjusted</span></div><div class="le-form"><input id="leRankWallet" class="le-input" placeholder="Seed wallet address"><button id="leRankRun" class="le-btn primary">Rank wallets</button></div><div id="leRankStatus" class="le-current">Use the analyzed wallet as a seed, or enter another wallet.</div><div id="leRankList" class="le-empty">No ranking loaded.</div></div>`;d.appendChild(s);document.getElementById("leWatchAdd").onclick=addWallet;document.getElementById("leRankRun").onclick=rank;loadWatchlist()}
   async function loadWatchlist(){const t=document.getElementById("leWatchList");if(!t)return;try{const a=await request("/watchlist");t.innerHTML=a.length?a.map(i=>`<div class="le-row"><div><div class="le-wallet">${esc(short(i.wallet))}</div><div class="le-meta">${esc(i.label||"Unlabeled")}</div></div><button class="le-btn" data-rm="${esc(i.wallet)}">Remove</button></div>`).join(""):"<div class='le-empty'>No wallets are being watched.</div>";t.querySelectorAll("[data-rm]").forEach(b=>b.onclick=async()=>{b.disabled=true;try{await request(`/watchlist/${encodeURIComponent(b.dataset.rm)}`,{method:"DELETE"});await loadWatchlist()}catch(e){alert(e.message);b.disabled=false}})}catch(e){t.innerHTML=`<div class='le-error'>${esc(e.message)}</div>`}}
   async function addWallet(){if(!currentWallet){alert("Analyze a wallet first.");return}const b=document.getElementById("leWatchAdd");b.disabled=true;try{await request("/watchlist",{method:"POST",body:JSON.stringify({wallet:currentWallet,label:document.getElementById("leWatchLabel").value.trim()})});document.getElementById("leWatchLabel").value="";await loadWatchlist()}catch(e){alert(e.message)}finally{b.disabled=false}}
   async function rank(){const w=document.getElementById("leRankWallet").value.trim(),st=document.getElementById("leRankStatus"),t=document.getElementById("leRankList"),b=document.getElementById("leRankRun");if(!w){st.textContent="Enter a seed wallet address.";return}b.disabled=true;st.textContent="Finding and ranking wallets…";try{const d=await request(`/rank/${encodeURIComponent(w)}`),rows=Array.isArray(d.ranked_wallets)?d.ranked_wallets:[];st.textContent=`${rows.length} wallet${rows.length===1?"":"s"} passed the confidence filter.`;t.innerHTML=rows.length?rows.slice(0,10).map(r=>`<div class="le-row"><div class="le-rank">#${esc(r.rank)}</div><div style="flex:1"><div class="le-wallet">${esc(short(r.wallet))}</div><div class="le-grid"><div class="le-mini"><b>${esc(r.ranking_score)}</b><span>Ranking</span></div><div class="le-mini"><b>${esc(r.smart_money_score)}</b><span>Smart Money</span></div><div class="le-mini"><b>${esc(r.reputation_score)}</b><span>Reputation</span></div><div class="le-mini"><b>${esc(r.confidence)}</b><span>Confidence</span></div></div></div></div>`).join(""):"<div class='le-empty'>No wallets met the current confidence threshold.</div>"}catch(e){st.textContent="Ranking failed.";t.innerHTML=`<div class='le-error'>${esc(e.message)}</div>`}finally{b.disabled=false}}
   function hook(){const original=window.renderProfile;if(typeof original!=="function"||window.__legecyFinalProfileHook)return;window.__legecyFinalProfileHook=true;window.renderProfile=function(data){original.apply(this,arguments);currentWallet=data?.wallet||"";const c=document.getElementById("leWatchCurrent"),r=document.getElementById("leRankWallet");if(c)c.textContent=currentWallet?`Current wallet: ${short(currentWallet)}`:"Analyze a wallet to add it to your watchlist.";if(r&&currentWallet)r.value=currentWallet;};}
   function footer(){const f=document.querySelector("footer");if(!f)return;f.innerHTML=`<div><strong style="color:#0b1420">LEGECY.</strong> · Solana Wallet Intelligence</div><div>DATA <span style="color:var(--green)">→</span> INTELLIGENCE <span style="color:var(--green)">→</span> OPPORTUNITY</div><div>Built in public.</div>`}
-  function init(){visualTheme();navigation();heroVisual();heroExtras();panels();hook();footer()}
+  function refineHeroConnectors(){
+    if(document.getElementById("legecyConnectorLayer")) return;
+    const visual=document.getElementById("legecyHeroVisual");
+    if(!visual) return;
+    const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+    svg.id="legecyConnectorLayer"; svg.classList.add("le-connector-layer"); svg.setAttribute("viewBox","0 0 565 525"); svg.setAttribute("preserveAspectRatio","none");
+    const links=[
+      {card:".le-f1",x:235,y:205,c:"#7657df"},
+      {card:".le-f2",x:350,y:225,c:"#08bf68"},
+      {card:".le-f3",x:245,y:320,c:"#7657df"},
+      {card:".le-f4",x:350,y:315,c:"#08bf68"}
+    ];
+    const ns="http://www.w3.org/2000/svg";
+    links.forEach((item,i)=>{
+      const card=visual.querySelector(item.card); if(!card) return;
+      const line=document.createElementNS(ns,"path"); line.classList.add("le-connector"); line.setAttribute("stroke",item.c); line.dataset.connector=i;
+      const dot=document.createElementNS(ns,"circle"); dot.classList.add("le-connector-dot"); dot.setAttribute("fill",item.c); dot.dataset.connectorDot=i;
+      const node=document.createElementNS(ns,"circle"); node.classList.add("le-connector-node"); node.setAttribute("fill",item.c); node.dataset.connectorNode=i;
+      svg.appendChild(line); svg.appendChild(dot); svg.appendChild(node);
+    });
+    visual.insertBefore(svg,visual.firstChild);
+    const draw=()=>{
+      const vb=visual.getBoundingClientRect();
+      links.forEach((item,i)=>{
+        const card=visual.querySelector(item.card); if(!card) return;
+        const r=card.getBoundingClientRect();
+        const sx=(r.left-vb.left)+(r.width/2), sy=(r.top-vb.top)+(r.height/2);
+        const ex=item.x, ey=item.y;
+        const mx=(sx+ex)/2, my=(sy+ey)/2;
+        const path=svg.querySelector(`[data-connector="${i}"]`);
+        const dot=svg.querySelector(`[data-connector-dot="${i}"]`);
+        const node=svg.querySelector(`[data-connector-node="${i}"]`);
+        if(path) path.setAttribute("d",`M ${sx.toFixed(1)} ${sy.toFixed(1)} Q ${mx.toFixed(1)} ${my.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`);
+        if(dot){dot.setAttribute("cx",sx);dot.setAttribute("cy",sy)}
+        if(node){node.setAttribute("cx",ex);node.setAttribute("cy",ey)}
+      });
+    };
+    requestAnimationFrame(draw);
+    window.addEventListener("resize",draw,{passive:true});
+  }
+  let currentWallet="";
+  function init(){visualTheme();navigation();heroVisual();heroExtras();panels();hook();footer();refineHeroConnectors()}
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
 })();
