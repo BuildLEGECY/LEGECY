@@ -2,10 +2,12 @@ import logging
 import os
 import time
 import uuid
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from solders.pubkey import Pubkey
 
 from wallet_intelligence import build_wallet_profile
@@ -17,6 +19,9 @@ load_dotenv()
 
 APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
 API_VERSION = "1.1.0"
+
+BASE_DIR = Path(__file__).resolve().parent
+DASHBOARD_FILE = BASE_DIR / "dashboard" / "index.html"
 
 CORS_ORIGINS = [
     origin.strip()
@@ -114,6 +119,21 @@ def validate_wallet_address(wallet_address: str) -> str:
 
 @app.get("/")
 async def root():
+    """Serve the public LEGECY dashboard."""
+    if DASHBOARD_FILE.exists():
+        return FileResponse(DASHBOARD_FILE, media_type="text/html")
+
+    return {
+        "name": "LEGECY",
+        "service": "Solana Wallet Intelligence API",
+        "status": "online",
+        "version": API_VERSION,
+        "environment": APP_ENV,
+    }
+
+
+@app.get("/api")
+async def api_info():
     return {
         "name": "LEGECY",
         "service": "Solana Wallet Intelligence API",
