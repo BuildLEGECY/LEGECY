@@ -73,9 +73,15 @@ def calculate_smart_money(statistics=None, behavior=None, reputation=None):
     if behavior.get("protocol_diversity") in {"HIGH", "high"}:
         positive_signals.append("High protocol diversity behavior")
 
-    coverage = _number(statistics.get("data_confidence", {}).get("coverage"))
-    if coverage <= 0:
-        coverage = 100.0
+    confidence_data = statistics.get("data_confidence", {})
+    if not isinstance(confidence_data, dict):
+        confidence_data = {}
+
+    # Missing confidence data must not be treated as perfect coverage.
+    # A caller that does not provide coverage gets LOW confidence rather than
+    # an artificially HIGH smart-money confidence signal.
+    coverage = _number(confidence_data.get("coverage"), 0.0)
+    coverage = max(0.0, min(100.0, coverage))
 
     score = max(0.0, min(100.0, score))
 
@@ -90,12 +96,11 @@ def calculate_smart_money(statistics=None, behavior=None, reputation=None):
     else:
         rating = "LOW"
 
-    confidence_score = max(0.0, min(100.0, coverage))
-    if confidence_score >= 90:
+    if coverage >= 90:
         confidence_level = "HIGH"
-    elif confidence_score >= 70:
+    elif coverage >= 70:
         confidence_level = "GOOD"
-    elif confidence_score >= 40:
+    elif coverage >= 40:
         confidence_level = "LIMITED"
     else:
         confidence_level = "LOW"
@@ -104,7 +109,7 @@ def calculate_smart_money(statistics=None, behavior=None, reputation=None):
         "score": round(score, 2),
         "rating": rating,
         "confidence": {
-            "score": round(confidence_score, 2),
+            "score": round(coverage, 2),
             "level": confidence_level,
         },
         "signals": positive_signals,
