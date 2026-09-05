@@ -44,6 +44,34 @@ PROTOCOLS = {
             "SWAP",
         ],
     },
+
+
+    # ---------------------------------------------------------
+    # Meteora DLMM
+    # ---------------------------------------------------------
+
+    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo": {
+        "name": "Meteora DLMM",
+        "category": "DEX",
+        "supports": [
+            "SWAP",
+            "LIQUIDITY",
+        ],
+    },
+
+
+    # ---------------------------------------------------------
+    # Raydium CLMM
+    # ---------------------------------------------------------
+
+    "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK": {
+        "name": "Raydium CLMM",
+        "category": "DEX",
+        "supports": [
+            "SWAP",
+            "LIQUIDITY",
+        ],
+    },
 }
 
 

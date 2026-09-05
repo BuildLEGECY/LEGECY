@@ -29,3 +29,5 @@ Thumbs.db
 
 # Logs
 *.log
+# Generated wallet profiles
+profiles/

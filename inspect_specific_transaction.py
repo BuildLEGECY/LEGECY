@@ -1,14 +1,11 @@
 import asyncio
+import sys
 
 from solana.rpc.async_api import AsyncClient
 from solders.signature import Signature
 
 
 RPC_URL = "https://api.mainnet.solana.com"
-
-SIGNATURE = (
-    "5wCFu7woCWcv3nJU6LoXhDniYSqhvTUdqZ7j7DPoAHqySJr8zLgyyPzYZh9u1KkbJDhqL1YEWBF5a2B4zWHkNZDP"
-)
 
 
 async def main():
@@ -17,13 +14,32 @@ async def main():
     print("LEGECY - SPECIFIC TRANSACTION INSPECTION")
     print("=" * 70)
 
+    # ---------------------------------------------------------
+    # Get transaction signature from command line
+    # ---------------------------------------------------------
+
+    if len(sys.argv) < 2:
+
+        print()
+        print("Usage:")
+        print(
+            "python inspect_specific_transaction.py "
+            "<transaction_signature>"
+        )
+        print()
+
+        return
+
+    signature_text = sys.argv[1]
+
     print()
     print("Signature:")
-    print(SIGNATURE)
+    print(signature_text)
 
-    # Convert string into the Signature type required
-    # by the installed Solana Python library.
-    signature = Signature.from_string(SIGNATURE)
+    # Convert string into Signature object.
+    signature = Signature.from_string(
+        signature_text
+    )
 
     async with AsyncClient(RPC_URL) as client:
 
@@ -36,9 +52,17 @@ async def main():
         tx = response.value
 
         if tx is None:
+
             print()
             print("Transaction not found.")
             return
+
+        meta = tx.transaction.meta
+        message = tx.transaction.transaction.message
+
+        # -----------------------------------------------------
+        # PROGRAMS
+        # -----------------------------------------------------
 
         print()
         print("=" * 70)
@@ -46,8 +70,6 @@ async def main():
         print("=" * 70)
 
         programs = set()
-
-        message = tx.transaction.transaction.message
 
         for instruction in message.instructions:
 
@@ -58,9 +80,9 @@ async def main():
             )
 
             if program_id:
-                programs.add(str(program_id))
-
-        meta = tx.transaction.meta
+                programs.add(
+                    str(program_id)
+                )
 
         if meta and meta.inner_instructions:
 
@@ -75,10 +97,153 @@ async def main():
                     )
 
                     if program_id:
-                        programs.add(str(program_id))
+                        programs.add(
+                            str(program_id)
+                        )
 
         for program in sorted(programs):
             print(program)
+
+        # -----------------------------------------------------
+        # SOL BALANCE CHANGE
+        # -----------------------------------------------------
+
+        print()
+        print("=" * 70)
+        print("SOL BALANCES")
+        print("=" * 70)
+
+        if meta:
+
+            pre_balances = meta.pre_balances
+            post_balances = meta.post_balances
+
+            if pre_balances and post_balances:
+
+                print(
+                    f"Account 0 before: "
+                    f"{pre_balances[0] / 1_000_000_000}"
+                )
+
+                print(
+                    f"Account 0 after:  "
+                    f"{post_balances[0] / 1_000_000_000}"
+                )
+
+                sol_change = (
+                    post_balances[0]
+                    - pre_balances[0]
+                ) / 1_000_000_000
+
+                print(
+                    f"SOL change:       "
+                    f"{sol_change}"
+                )
+
+        # -----------------------------------------------------
+        # TOKEN BALANCES
+        # -----------------------------------------------------
+
+        print()
+        print("=" * 70)
+        print("TOKEN BALANCES")
+        print("=" * 70)
+
+        if meta:
+
+            print()
+            print("PRE TOKEN BALANCES")
+            print("-" * 70)
+
+            if meta.pre_token_balances:
+
+                for token in meta.pre_token_balances:
+
+                    owner = getattr(
+                        token,
+                        "owner",
+                        None
+                    )
+
+                    mint = getattr(
+                        token,
+                        "mint",
+                        None
+                    )
+
+                    amount = token.ui_token_amount
+
+                    print(
+                        f"Account Index: "
+                        f"{token.account_index}"
+                    )
+
+                    print(
+                        f"Owner: {owner}"
+                    )
+
+                    print(
+                        f"Mint: {mint}"
+                    )
+
+                    print(
+                        f"Amount: "
+                        f"{amount.ui_amount}"
+                    )
+
+                    print()
+
+            else:
+                print("No pre-token balances.")
+
+            print()
+            print("POST TOKEN BALANCES")
+            print("-" * 70)
+
+            if meta.post_token_balances:
+
+                for token in meta.post_token_balances:
+
+                    owner = getattr(
+                        token,
+                        "owner",
+                        None
+                    )
+
+                    mint = getattr(
+                        token,
+                        "mint",
+                        None
+                    )
+
+                    amount = token.ui_token_amount
+
+                    print(
+                        f"Account Index: "
+                        f"{token.account_index}"
+                    )
+
+                    print(
+                        f"Owner: {owner}"
+                    )
+
+                    print(
+                        f"Mint: {mint}"
+                    )
+
+                    print(
+                        f"Amount: "
+                        f"{amount.ui_amount}"
+                    )
+
+                    print()
+
+            else:
+                print("No post-token balances.")
+
+        # -----------------------------------------------------
+        # LOGS
+        # -----------------------------------------------------
 
         print()
         print("=" * 70)
