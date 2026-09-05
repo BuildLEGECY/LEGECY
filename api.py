@@ -19,7 +19,7 @@ load_dotenv()
 
 
 APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
-API_VERSION = "1.3.0"
+API_VERSION = "1.4.0"
 
 BASE_DIR = Path(__file__).resolve().parent
 DASHBOARD_FILE = BASE_DIR / "dashboard" / "index.html"
@@ -30,7 +30,14 @@ RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "20"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 ANALYSIS_TIMEOUT_SECONDS = int(os.getenv("ANALYSIS_TIMEOUT_SECONDS", "45"))
 
+# Short-lived in-memory cache for repeated wallet lookups. This avoids
+# re-running the full RPC analysis when a dashboard/user requests the same
+# wallet again within a short window.
+CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "15"))
+CACHE_MAX_ENTRIES = int(os.getenv("CACHE_MAX_ENTRIES", "100"))
+
 _rate_limit_state = {}
+_wallet_cache = {}
 
 CORS_ORIGINS = [
     origin.strip()
@@ -167,6 +174,35 @@ def check_rate_limit(request: Request) -> None:
             _rate_limit_state.pop(ip, None)
 
 
+def get_cached_wallet_profile(wallet_address: str):
+    """Return a fresh cached wallet profile, if one exists."""
+    cached = _wallet_cache.get(wallet_address)
+    if cached is None:
+        return None
+
+    created_at, profile = cached
+    if time.monotonic() - created_at >= CACHE_TTL_SECONDS:
+        _wallet_cache.pop(wallet_address, None)
+        return None
+
+    return profile
+
+
+def cache_wallet_profile(wallet_address: str, profile) -> None:
+    """Store a wallet profile and keep the in-memory cache bounded."""
+    now = time.monotonic()
+    _wallet_cache[wallet_address] = (now, profile)
+
+    if len(_wallet_cache) <= CACHE_MAX_ENTRIES:
+        return
+
+    oldest_wallet = min(
+        _wallet_cache,
+        key=lambda wallet: _wallet_cache[wallet][0],
+    )
+    _wallet_cache.pop(oldest_wallet, None)
+
+
 @app.get(
     "/",
     tags=["Public"],
@@ -230,7 +266,8 @@ async def health():
         "normalized intelligence profile. The response can include transaction "
         "coverage, activity metrics, token and protocol information, trading "
         "performance, behavior signals, reputation, smart-money scoring and "
-        "data-confidence information."
+        "data-confidence information. Repeated requests for the same wallet "
+        "may be served from a short-lived cache."
     ),
     response_description="Normalized LEGECY wallet intelligence profile.",
     responses={
@@ -252,6 +289,12 @@ async def analyze_wallet(wallet_address: str, request: Request):
     check_rate_limit(request)
     wallet_address = validate_wallet_address(wallet_address)
 
+    cached_profile = get_cached_wallet_profile(wallet_address)
+    if cached_profile is not None:
+        response = build_profile_summary(cached_profile)
+        response["cache"] = {"status": "HIT", "ttl_seconds": CACHE_TTL_SECONDS}
+        return response
+
     try:
         profile = await asyncio.wait_for(
             build_wallet_profile(
@@ -261,7 +304,10 @@ async def analyze_wallet(wallet_address: str, request: Request):
             timeout=ANALYSIS_TIMEOUT_SECONDS,
         )
 
-        return build_profile_summary(profile)
+        cache_wallet_profile(wallet_address, profile)
+        response = build_profile_summary(profile)
+        response["cache"] = {"status": "MISS", "ttl_seconds": CACHE_TTL_SECONDS}
+        return response
 
     except HTTPException:
         raise
