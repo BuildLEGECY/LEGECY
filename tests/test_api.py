@@ -158,3 +158,15 @@ def test_root_dashboard_injects_enhancement_script():
 
     assert response.status_code == 200
     assert "dashboard-enhancements.js" in response.text
+
+
+def test_security_headers_are_present():
+    client = TestClient(api.app)
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    assert response.headers["X-Permitted-Cross-Domain-Policies"] == "none"
+    assert "Server" not in response.headers
