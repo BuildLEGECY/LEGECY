@@ -70,3 +70,43 @@ def test_wallet_cache_is_bounded():
     finally:
         api._wallet_cache.clear()
         api.CACHE_MAX_ENTRIES = original_max
+
+
+def test_wallet_response_schema_documents_stable_top_level_fields():
+    schema = api.app.openapi()
+    response_schema = (
+        schema["paths"]["/wallet/{wallet_address}"]["get"]
+        ["responses"]["200"]["content"]["application/json"]["schema"]
+    )
+
+    assert response_schema["$ref"].endswith("#/components/schemas/WalletProfileResponse")
+
+    properties = schema["components"]["schemas"]["WalletProfileResponse"]["properties"]
+    expected_fields = {
+        "wallet",
+        "analysis",
+        "activity",
+        "swap_metrics",
+        "trading",
+        "trade_performance",
+        "behavior",
+        "protocols",
+        "reputation",
+        "smart_money",
+        "data_confidence",
+        "generated_at",
+        "cache",
+    }
+
+    assert expected_fields.issubset(properties.keys())
+
+
+def test_error_responses_use_error_schema():
+    schema = api.app.openapi()
+    responses = schema["paths"]["/wallet/{wallet_address}"]["get"]["responses"]
+
+    for status_code in ("400", "429", "500", "504"):
+        response = responses[status_code]
+        assert response["content"]["application/json"]["schema"]["$ref"].endswith(
+            "#/components/schemas/ErrorResponse"
+        )
