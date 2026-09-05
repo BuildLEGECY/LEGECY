@@ -1,5 +1,10 @@
 (() => {
   const API = window.LEGECY_API_URL || "";
+  const SOCIAL = {
+    x: "https://x.com/BuildLEGECY",
+    github: "https://github.com/BuildLEGECY",
+    docs: "/docs/",
+  };
   const esc = (value) => String(value ?? "").replace(/[&<>\"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
   const short = (value) => {
     const s = String(value || "");
@@ -28,9 +33,33 @@
       .le-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.le-mini{background:#0a0f15;border:1px solid #17202a;border-radius:10px;padding:10px}.le-mini b{display:block;font-size:14px}.le-mini span{font-size:9px;color:#667381;text-transform:uppercase;letter-spacing:.7px}
       .le-rank{font-size:12px;font-weight:850;color:#78f5a2;width:25px}.le-empty{color:#596675;font-size:11px;padding:8px 0}.le-error{color:#ff6f7d;font-size:11px;padding:8px 0}
       .le-form{display:flex;gap:8px;margin-bottom:10px}.le-form .le-input{flex:1}.le-current{font-size:10px;color:#697684;margin-bottom:9px}
-      @media(max-width:800px){.le-enhance-grid{grid-template-columns:1fr}.le-grid{grid-template-columns:1fr 1fr}.le-form{flex-direction:column}}
+      .le-social{display:flex;align-items:center;gap:8px}.le-social a{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid #202a35;border-radius:999px;background:#0d131b;color:#aeb8c4;text-decoration:none;font-size:10px;font-weight:750;transition:.15s ease}.le-social a:hover{border-color:#78f5a2;color:#78f5a2;transform:translateY(-1px)}.le-social .le-social-dot{width:5px;height:5px;border-radius:50%;background:#78f5a2;box-shadow:0 0 7px rgba(120,245,162,.7)}
+      .le-footer-social{display:flex;align-items:center;gap:7px;margin-top:8px}.le-footer-social a{color:#697684;text-decoration:none;font-size:10px}.le-footer-social a:hover{color:#78f5a2}
+      @media(max-width:800px){.le-enhance-grid{grid-template-columns:1fr}.le-grid{grid-template-columns:1fr 1fr}.le-form{flex-direction:column}.le-social{display:none}.le-footer-social{flex-wrap:wrap}}
     `;
     document.head.appendChild(style);
+  }
+
+  function injectSocialLinks() {
+    if (document.getElementById("legecySocialLinks")) return;
+    const headerRight = document.querySelector(".header-right");
+    if (headerRight) {
+      const nav = document.createElement("nav");
+      nav.id = "legecySocialLinks";
+      nav.className = "le-social";
+      nav.setAttribute("aria-label", "LEGECY links");
+      nav.innerHTML = `<a href="${SOCIAL.docs}" target="_self">Docs</a><a href="${SOCIAL.x}" target="_blank" rel="noopener noreferrer">𝕏 BuildLEGECY</a><a href="${SOCIAL.github}" target="_blank" rel="noopener noreferrer">GitHub</a>`;
+      headerRight.innerHTML = `<i class="dot"></i> ON-CHAIN INTELLIGENCE`;
+      headerRight.appendChild(nav);
+    }
+    const footer = document.querySelector("footer");
+    if (footer && !document.getElementById("legecyFooterSocial")) {
+      const social = document.createElement("div");
+      social.id = "legecyFooterSocial";
+      social.className = "le-footer-social";
+      social.innerHTML = `<a href="${SOCIAL.docs}" target="_self">Docs</a><span>·</span><a href="${SOCIAL.x}" target="_blank" rel="noopener noreferrer">𝕏</a><span>·</span><a href="${SOCIAL.github}" target="_blank" rel="noopener noreferrer">GitHub</a>`;
+      footer.appendChild(social);
+    }
   }
 
   function panelMarkup() {
@@ -124,6 +153,7 @@
   function init() {
     if (document.getElementById("legecyEnhancements")) return;
     injectStyles();
+    injectSocialLinks();
     const dashboard = document.getElementById("dashboard");
     if (!dashboard) return;
     const panel = panelMarkup();
