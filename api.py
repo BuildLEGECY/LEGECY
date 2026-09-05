@@ -12,8 +12,9 @@ from smart_money_ranking import rank_smart_wallets
 from wallet_comparison import compare_wallet_profiles
 from wallet_intelligence_fast import build_wallet_profile
 from wallet_profile import build_profile_summary
+from watchlist_api import router as watchlist_router
 load_dotenv()
-APP_ENV=os.getenv('APP_ENV','development').strip().lower();API_VERSION='2.1.0';BASE_DIR=Path(__file__).resolve().parent;DASHBOARD_FILE=BASE_DIR/'dashboard'/'index.html'
+APP_ENV=os.getenv('APP_ENV','development').strip().lower();API_VERSION='2.2.0';BASE_DIR=Path(__file__).resolve().parent;DASHBOARD_FILE=BASE_DIR/'dashboard'/'index.html'
 RATE_LIMIT_REQUESTS=int(os.getenv('RATE_LIMIT_REQUESTS','20'));RATE_LIMIT_WINDOW_SECONDS=int(os.getenv('RATE_LIMIT_WINDOW_SECONDS','60'));ANALYSIS_TIMEOUT_SECONDS=int(os.getenv('ANALYSIS_TIMEOUT_SECONDS','45'));CACHE_TTL_SECONDS=int(os.getenv('CACHE_TTL_SECONDS','15'));CACHE_MAX_ENTRIES=int(os.getenv('CACHE_MAX_ENTRIES','100'));DEFAULT_HISTORY_LIMIT=int(os.getenv('DEFAULT_HISTORY_LIMIT','20'));MAX_HISTORY_LIMIT=int(os.getenv('MAX_HISTORY_LIMIT','100'));DEFAULT_HISTORY_LIMIT=max(1,min(DEFAULT_HISTORY_LIMIT,MAX_HISTORY_LIMIT));MAX_HISTORY_LIMIT=max(DEFAULT_HISTORY_LIMIT,MAX_HISTORY_LIMIT)
 _rate_limit_state={};_wallet_cache={};_metrics={'requests_total':0,'responses_2xx':0,'responses_4xx':0,'responses_5xx':0,'wallet_analysis_requests':0,'wallet_analysis_success':0,'wallet_analysis_errors':0,'wallet_analysis_timeouts':0,'rate_limit_rejections':0,'cache_hits':0,'cache_misses':0,'total_response_time_ms':0.0,'wallet_analysis_time_ms':0.0,'comparison_requests':0,'comparison_success':0,'comparison_errors':0,'discovery_requests':0,'discovery_success':0,'discovery_errors':0,'ranking_requests':0,'ranking_success':0,'ranking_errors':0}
 CORS_ORIGINS=[x.strip() for x in os.getenv('CORS_ORIGINS','http://127.0.0.1:5500,http://localhost:5500').split(',') if x.strip()];logging.basicConfig(level=os.getenv('LOG_LEVEL','INFO').upper());logger=logging.getLogger('legecy-api')
@@ -24,8 +25,9 @@ class WalletComparisonResponse(BaseModel):
  wallet_a:Optional[str]=None;wallet_b:Optional[str]=None;winner:Dict[str,Any]={};composite:Dict[str,Any]={};metrics:Dict[str,Any]={};confidence:Dict[str,Any]={}
 class WalletDiscoveryResponse(BaseModel):
  seed_wallet:Optional[str]=None;history_scanned:int=0;candidates:list[Dict[str,Any]]=[];discovery:Dict[str,Any]={}
-app=FastAPI(title='LEGECY Wallet Intelligence API',description='Public API for Solana wallet intelligence, reputation, trading behavior, data confidence, smart-money analysis, wallet comparison, smart-wallet discovery and smart-money ranking.',version=API_VERSION,docs_url='/docs',redoc_url='/redoc',openapi_url='/openapi.json',contact={'name':'LEGECY'},license_info={'name':'Project License'})
-app.add_middleware(CORSMiddleware,allow_origins=CORS_ORIGINS,allow_credentials=True,allow_methods=['GET'],allow_headers=['*'])
+app=FastAPI(title='LEGECY Wallet Intelligence API',description='Public API for Solana wallet intelligence, reputation, trading behavior, data confidence, smart-money analysis, wallet comparison, smart-wallet discovery, smart-money ranking and watchlists.',version=API_VERSION,docs_url='/docs',redoc_url='/redoc',openapi_url='/openapi.json',contact={'name':'LEGECY'},license_info={'name':'Project License'})
+app.add_middleware(CORSMiddleware,allow_origins=CORS_ORIGINS,allow_credentials=True,allow_methods=['GET','POST','DELETE'],allow_headers=['*'])
+app.include_router(watchlist_router)
 @app.middleware('http')
 async def request_logging_middleware(request:Request,call_next):
  rid=str(uuid.uuid4());start=time.perf_counter();_metrics['requests_total']+=1
