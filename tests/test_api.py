@@ -2,6 +2,7 @@ import time
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 import api
 
@@ -139,3 +140,21 @@ def test_wallet_endpoint_documents_history_limit():
     assert limit_schema["default"] == api.DEFAULT_HISTORY_LIMIT
     assert limit_schema["maximum"] == api.MAX_HISTORY_LIMIT
     assert limit_schema["minimum"] == 1
+
+
+def test_dashboard_enhancement_asset_is_served():
+    client = TestClient(api.app)
+    response = client.get("/dashboard-enhancements.js")
+
+    assert response.status_code == 200
+    assert "Watchlist" in response.text
+    assert "Smart Money Ranking" in response.text
+    assert response.headers["content-type"].startswith("application/javascript")
+
+
+def test_root_dashboard_injects_enhancement_script():
+    client = TestClient(api.app)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "dashboard-enhancements.js" in response.text
