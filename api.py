@@ -19,25 +19,38 @@ load_dotenv()
 
 
 APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
-API_VERSION = "1.5.0"
+API_VERSION = "1.6.0"
 
 BASE_DIR = Path(__file__).resolve().parent
 DASHBOARD_FILE = BASE_DIR / "dashboard" / "index.html"
 
-# Lightweight production protection. This intentionally uses only the
-# standard library so deployment does not need another dependency.
 RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "20"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 ANALYSIS_TIMEOUT_SECONDS = int(os.getenv("ANALYSIS_TIMEOUT_SECONDS", "45"))
 
-# Short-lived in-memory cache for repeated wallet lookups. This avoids
-# re-running the full RPC analysis when a dashboard/user requests the same
-# wallet again within a short window.
 CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "15"))
 CACHE_MAX_ENTRIES = int(os.getenv("CACHE_MAX_ENTRIES", "100"))
 
 _rate_limit_state = {}
 _wallet_cache = {}
+
+# Process-local operational metrics. These counters are intentionally
+# dependency-free and contain no private wallet or credential data.
+_metrics = {
+    "requests_total": 0,
+    "responses_2xx": 0,
+    "responses_4xx": 0,
+    "responses_5xx": 0,
+    "wallet_analysis_requests": 0,
+    "wallet_analysis_success": 0,
+    "wallet_analysis_errors": 0,
+    "wallet_analysis_timeouts": 0,
+    "rate_limit_rejections": 0,
+    "cache_hits": 0,
+    "cache_misses": 0,
+    "total_response_time_ms": 0.0,
+    "wallet_analysis_time_ms": 0.0,
+}
 
 CORS_ORIGINS = [
     origin.strip()
@@ -84,11 +97,19 @@ app.add_middleware(
 async def request_logging_middleware(request: Request, call_next):
     request_id = str(uuid.uuid4())
     start_time = time.perf_counter()
+    _metrics["requests_total"] += 1
 
     try:
         response = await call_next(request)
-
         duration_ms = (time.perf_counter() - start_time) * 1000
+        _metrics["total_response_time_ms"] += duration_ms
+
+        if 200 <= response.status_code < 300:
+            _metrics["responses_2xx"] += 1
+        elif 400 <= response.status_code < 500:
+            _metrics["responses_4xx"] += 1
+        elif response.status_code >= 500:
+            _metrics["responses_5xx"] += 1
 
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Response-Time-MS"] = f"{duration_ms:.2f}"
@@ -106,6 +127,8 @@ async def request_logging_middleware(request: Request, call_next):
 
     except Exception:
         duration_ms = (time.perf_counter() - start_time) * 1000
+        _metrics["total_response_time_ms"] += duration_ms
+        _metrics["responses_5xx"] += 1
 
         logger.exception(
             "request_id=%s method=%s path=%s status=500 duration_ms=%.2f",
@@ -114,7 +137,6 @@ async def request_logging_middleware(request: Request, call_next):
             request.url.path,
             duration_ms,
         )
-
         raise
 
 
@@ -143,7 +165,6 @@ def check_rate_limit(request: Request) -> None:
     """Apply a small per-client limit to expensive wallet analysis calls."""
     now = time.monotonic()
     client_ip = request.client.host if request.client else "unknown"
-
     window_start, request_count = _rate_limit_state.get(client_ip, (now, 0))
 
     if now - window_start >= RATE_LIMIT_WINDOW_SECONDS:
@@ -151,6 +172,7 @@ def check_rate_limit(request: Request) -> None:
         request_count = 0
 
     if request_count >= RATE_LIMIT_REQUESTS:
+        _metrics["rate_limit_rejections"] += 1
         retry_after = max(1, int(RATE_LIMIT_WINDOW_SECONDS - (now - window_start)))
         raise HTTPException(
             status_code=429,
@@ -162,7 +184,6 @@ def check_rate_limit(request: Request) -> None:
 
     _rate_limit_state[client_ip] = (window_start, request_count + 1)
 
-    # Prevent stale client entries from growing forever on long-running servers.
     if len(_rate_limit_state) > 1000:
         cutoff = now - RATE_LIMIT_WINDOW_SECONDS
         stale = [
@@ -258,6 +279,62 @@ async def health():
 
 
 @app.get(
+    "/metrics",
+    tags=["Public"],
+    summary="Get production metrics",
+    description=(
+        "Return process-local operational metrics for requests, wallet analysis, "
+        "cache behavior, rate limiting, errors and response latency."
+    ),
+    response_description="Current LEGECY operational metrics.",
+)
+async def metrics():
+    requests_total = _metrics["requests_total"]
+    average_response_time_ms = (
+        _metrics["total_response_time_ms"] / requests_total
+        if requests_total
+        else 0.0
+    )
+
+    wallet_requests = _metrics["wallet_analysis_requests"]
+    average_wallet_analysis_time_ms = (
+        _metrics["wallet_analysis_time_ms"] / wallet_requests
+        if wallet_requests
+        else 0.0
+    )
+
+    return {
+        "version": API_VERSION,
+        "environment": APP_ENV,
+        "requests": {
+            "total": requests_total,
+            "2xx": _metrics["responses_2xx"],
+            "4xx": _metrics["responses_4xx"],
+            "5xx": _metrics["responses_5xx"],
+            "average_response_time_ms": round(average_response_time_ms, 2),
+        },
+        "wallet_analysis": {
+            "requests": wallet_requests,
+            "success": _metrics["wallet_analysis_success"],
+            "errors": _metrics["wallet_analysis_errors"],
+            "timeouts": _metrics["wallet_analysis_timeouts"],
+            "average_time_ms": round(average_wallet_analysis_time_ms, 2),
+        },
+        "cache": {
+            "hits": _metrics["cache_hits"],
+            "misses": _metrics["cache_misses"],
+            "ttl_seconds": CACHE_TTL_SECONDS,
+            "max_entries": CACHE_MAX_ENTRIES,
+        },
+        "rate_limit": {
+            "rejections": _metrics["rate_limit_rejections"],
+            "requests_per_window": RATE_LIMIT_REQUESTS,
+            "window_seconds": RATE_LIMIT_WINDOW_SECONDS,
+        },
+    }
+
+
+@app.get(
     "/wallet/{wallet_address}",
     tags=["Wallet Intelligence"],
     summary="Analyze a Solana wallet",
@@ -289,12 +366,18 @@ async def health():
 async def analyze_wallet(wallet_address: str, request: Request):
     check_rate_limit(request)
     wallet_address = validate_wallet_address(wallet_address)
+    _metrics["wallet_analysis_requests"] += 1
 
     cached_profile = get_cached_wallet_profile(wallet_address)
     if cached_profile is not None:
+        _metrics["cache_hits"] += 1
+        _metrics["wallet_analysis_success"] += 1
         response = build_profile_summary(cached_profile)
         response["cache"] = {"status": "HIT", "ttl_seconds": CACHE_TTL_SECONDS}
         return response
+
+    _metrics["cache_misses"] += 1
+    analysis_start = time.perf_counter()
 
     try:
         profile = await asyncio.wait_for(
@@ -305,15 +388,25 @@ async def analyze_wallet(wallet_address: str, request: Request):
             timeout=ANALYSIS_TIMEOUT_SECONDS,
         )
 
+        _metrics["wallet_analysis_time_ms"] += (
+            time.perf_counter() - analysis_start
+        ) * 1000
+        _metrics["wallet_analysis_success"] += 1
         cache_wallet_profile(wallet_address, profile)
         response = build_profile_summary(profile)
         response["cache"] = {"status": "MISS", "ttl_seconds": CACHE_TTL_SECONDS}
         return response
 
     except HTTPException:
+        _metrics["wallet_analysis_errors"] += 1
         raise
 
     except asyncio.TimeoutError:
+        _metrics["wallet_analysis_timeouts"] += 1
+        _metrics["wallet_analysis_errors"] += 1
+        _metrics["wallet_analysis_time_ms"] += (
+            time.perf_counter() - analysis_start
+        ) * 1000
         logger.warning(
             "Wallet analysis timed out for wallet=%s timeout_seconds=%s",
             wallet_address,
@@ -327,12 +420,20 @@ async def analyze_wallet(wallet_address: str, request: Request):
         )
 
     except ValueError:
+        _metrics["wallet_analysis_errors"] += 1
+        _metrics["wallet_analysis_time_ms"] += (
+            time.perf_counter() - analysis_start
+        ) * 1000
         raise HTTPException(
             status_code=400,
             detail={"message": "Unable to process the wallet address."},
         )
 
     except Exception:
+        _metrics["wallet_analysis_errors"] += 1
+        _metrics["wallet_analysis_time_ms"] += (
+            time.perf_counter() - analysis_start
+        ) * 1000
         logger.exception(
             "Wallet analysis failed for wallet=%s",
             wallet_address,
