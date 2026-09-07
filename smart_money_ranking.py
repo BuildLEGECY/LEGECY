@@ -1,6 +1,46 @@
 from typing import Any, Dict, Iterable, List
 
 
+class _DeferredSeedRanking:
+    """Awaitable compatibility wrapper for the public seed-wallet ranking route."""
+
+    def __init__(self, seed_wallet: str, history_limit: int, max_candidates: int, candidate_history_limit: int, min_confidence: float):
+        self.seed_wallet = seed_wallet
+        self.history_limit = history_limit
+        self.max_candidates = max_candidates
+        self.candidate_history_limit = candidate_history_limit
+        self.min_confidence = min_confidence
+
+    def __await__(self):
+        async def _run():
+            from smart_wallet_discovery import discover_smart_wallets
+
+            discovery = await discover_smart_wallets(
+                self.seed_wallet,
+                seed_history_limit=self.history_limit,
+                candidate_limit=self.max_candidates,
+                candidate_history_limit=self.candidate_history_limit,
+            )
+            candidates = discovery.get("candidates", [])
+            ranked = rank_smart_wallets(
+                candidates,
+                min_confidence=self.min_confidence,
+            )
+            return {
+                "seed_wallet": self.seed_wallet,
+                "history_scanned": discovery.get("history_scanned", 0),
+                "ranked_wallets": ranked,
+                "ranking": {
+                    "method": "Confidence-adjusted Smart Money ranking",
+                    "candidate_count": len(candidates),
+                    "minimum_confidence": self.min_confidence,
+                    "read_only": True,
+                },
+            }
+
+        return _run().__await__()
+
+
 def _number(value: Any, default: float = 0.0) -> float:
     try:
         return float(value)
@@ -22,8 +62,28 @@ def _smart_money_score(profile: Dict[str, Any]) -> float:
     return max(0.0, min(100.0, _number(value.get("score"))))
 
 
-def rank_smart_wallets(profiles: Iterable[Dict[str, Any]], min_confidence: float = 0.0) -> List[Dict[str, Any]]:
-    """Rank wallet profiles by smart-money quality with an evidence-confidence adjustment."""
+def rank_smart_wallets(
+    profiles: Iterable[Dict[str, Any]] | str,
+    min_confidence: float = 0.0,
+    history_limit: int = 10,
+    max_candidates: int = 5,
+    candidate_history_limit: int = 10,
+):
+    """Rank wallet profiles, or return an awaitable seed-wallet ranking job.
+
+    The profile form remains synchronous for existing callers and tests. The
+    seed-wallet form provides compatibility with the production API route,
+    which awaits the ranking operation after discovering candidate wallets.
+    """
+    if isinstance(profiles, str):
+        return _DeferredSeedRanking(
+            profiles,
+            history_limit,
+            max_candidates,
+            candidate_history_limit,
+            min_confidence,
+        )
+
     minimum = max(0.0, min(100.0, _number(min_confidence)))
     ranked = []
 
@@ -60,7 +120,14 @@ def rank_smart_wallets(profiles: Iterable[Dict[str, Any]], min_confidence: float
             "behavior": profile.get("behavior", {}),
         })
 
-    ranked.sort(key=lambda item: (item["ranking_score"], item["smart_money_score"], item["confidence"]), reverse=True)
+    ranked.sort(
+        key=lambda item: (
+            item["ranking_score"],
+            item["smart_money_score"],
+            item["confidence"],
+        ),
+        reverse=True,
+    )
 
     for index, item in enumerate(ranked, start=1):
         item["rank"] = index
