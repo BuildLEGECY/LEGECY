@@ -27,6 +27,7 @@ API_VERSION = "2.2.1"
 BASE_DIR = Path(__file__).resolve().parent
 DASHBOARD_FILE = BASE_DIR / "dashboard" / "index.html"
 DASHBOARD_ENHANCEMENTS = BASE_DIR / "dashboard" / "dashboard_enhancements.js"
+DASHBOARD_BACKGROUND = BASE_DIR / "dashboard" / "premium_background.js"
 
 RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "20"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
@@ -313,14 +314,13 @@ async def _analyze_for_compare(wallet: str, limit: int):
 async def root():
     if DASHBOARD_FILE.exists():
         html = DASHBOARD_FILE.read_text(encoding="utf-8")
-        if (
-            DASHBOARD_ENHANCEMENTS.exists()
-            and "dashboard_enhancements.js" not in html
-        ):
-            html = html.replace(
-                "</body>",
-                '<script src="/dashboard-enhancements.js"></script></body>',
-            )
+        scripts = ""
+        if DASHBOARD_ENHANCEMENTS.exists() and "dashboard_enhancements.js" not in html:
+            scripts += '<script src="/dashboard-enhancements.js?v=2"></script>'
+        if DASHBOARD_BACKGROUND.exists() and "premium_background.js" not in html:
+            scripts += '<script src="/premium-background.js?v=1"></script>'
+        if scripts:
+            html = html.replace("</body>", f"{scripts}</body>")
         return HTMLResponse(html)
 
     return {
@@ -345,6 +345,23 @@ async def dashboard_enhancements():
         )
     return FileResponse(
         DASHBOARD_ENHANCEMENTS,
+        media_type="application/javascript",
+    )
+
+
+@app.get(
+    "/premium-background.js",
+    tags=["Public"],
+    include_in_schema=False,
+)
+async def premium_background():
+    if not DASHBOARD_BACKGROUND.exists():
+        raise HTTPException(
+            status_code=404,
+            detail={"message": "Premium background is not available."},
+        )
+    return FileResponse(
+        DASHBOARD_BACKGROUND,
         media_type="application/javascript",
     )
 
@@ -437,352 +454,166 @@ async def metrics():
 
 @app.get(
     "/wallet/{wallet_address}",
+    response_model=WalletProfileResponse,
     tags=["Wallet Intelligence"],
     summary="Analyze a Solana wallet",
-    response_model=WalletProfileResponse,
     responses={
-        400: {
-            "model": ErrorResponse,
-            "description": "Invalid wallet address or processing error.",
-        },
-        429: {
-            "model": ErrorResponse,
-            "description": "Rate limit exceeded.",
-        },
-        500: {
-            "model": ErrorResponse,
-            "description": "Wallet analysis failed.",
-        },
-        504: {
-            "model": ErrorResponse,
-            "description": "Wallet analysis timed out.",
-        },
+        400: {"model": ErrorResponse},
+        429: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+        504: {"model": ErrorResponse},
     },
 )
-async def analyze_wallet(
+async def wallet_analysis(
     wallet_address: str,
     request: Request,
     limit: int = Query(
-        default=DEFAULT_HISTORY_LIMIT,
+        DEFAULT_HISTORY_LIMIT,
         ge=1,
         le=MAX_HISTORY_LIMIT,
-        description="Number of recent transactions to analyze.",
     ),
 ):
-    check_rate_limit(request)
     wallet_address = validate_wallet_address(wallet_address)
-    _metrics["wallet_analysis_requests"] += 1
-    cached = get_cached_wallet_profile(wallet_address, limit)
+    check_rate_limit(request)
 
+    cached = get_cached_wallet_profile(wallet_address, limit)
     if cached is not None:
         _metrics["cache_hits"] += 1
-        _metrics["wallet_analysis_success"] += 1
-        result = build_profile_summary(cached)
-        result["cache"] = {
-            "status": "HIT",
-            "ttl_seconds": CACHE_TTL_SECONDS,
-            "history_limit": limit,
-        }
-        return result
+        profile = dict(cached)
+        profile["cache"] = {"hit": True, "ttl_seconds": CACHE_TTL_SECONDS}
+        return build_profile_summary(profile)
 
     _metrics["cache_misses"] += 1
-    start = time.perf_counter()
+    _metrics["wallet_analysis_requests"] += 1
+    started = time.perf_counter()
 
     try:
         profile = await asyncio.wait_for(
             build_wallet_profile(wallet_address, limit=limit),
             timeout=ANALYSIS_TIMEOUT_SECONDS,
         )
-        _metrics["wallet_analysis_time_ms"] += (
-            time.perf_counter() - start
-        ) * 1000
-        _metrics["wallet_analysis_success"] += 1
-        cache_wallet_profile(wallet_address, profile, limit)
-        result = build_profile_summary(profile)
-        result["cache"] = {
-            "status": "MISS",
-            "ttl_seconds": CACHE_TTL_SECONDS,
-            "history_limit": limit,
-        }
-        return result
     except asyncio.TimeoutError:
         _metrics["wallet_analysis_timeouts"] += 1
-        _metrics["wallet_analysis_errors"] += 1
-        _metrics["wallet_analysis_time_ms"] += (
-            time.perf_counter() - start
-        ) * 1000
         raise HTTPException(
             status_code=504,
-            detail={
-                "message": "Wallet analysis timed out. Please try again later."
-            },
-        )
-    except ValueError:
-        _metrics["wallet_analysis_errors"] += 1
-        raise HTTPException(
-            status_code=400,
-            detail={"message": "Unable to process the wallet address."},
+            detail={"message": "Wallet analysis timed out. Please try again."},
         )
     except Exception:
         _metrics["wallet_analysis_errors"] += 1
-        logger.exception(
-            "Wallet analysis failed for wallet=%s limit=%s",
-            wallet_address,
-            limit,
-        )
+        logger.exception("wallet analysis failed wallet=%s", wallet_address)
         raise HTTPException(
             status_code=500,
-            detail={
-                "message": "Wallet analysis failed. Please try again later."
-            },
+            detail={"message": "Wallet analysis failed."},
         )
+
+    _metrics["wallet_analysis_success"] += 1
+    _metrics["wallet_analysis_time_ms"] += (
+        time.perf_counter() - started
+    ) * 1000
+    cache_wallet_profile(wallet_address, profile, limit)
+
+    profile = dict(profile)
+    profile["cache"] = {"hit": False, "ttl_seconds": CACHE_TTL_SECONDS}
+    return build_profile_summary(profile)
 
 
 @app.get(
     "/compare/{wallet_a}/{wallet_b}",
+    response_model=WalletComparisonResponse,
     tags=["Wallet Intelligence"],
     summary="Compare two Solana wallets",
-    response_model=WalletComparisonResponse,
 )
-async def compare_wallets(
+async def wallet_compare(
     wallet_a: str,
     wallet_b: str,
-    request: Request,
-    limit: int = Query(
-        default=DEFAULT_HISTORY_LIMIT,
-        ge=1,
-        le=MAX_HISTORY_LIMIT,
-        description="Number of recent transactions to analyze for each wallet.",
-    ),
+    limit: int = Query(DEFAULT_HISTORY_LIMIT, ge=1, le=MAX_HISTORY_LIMIT),
 ):
-    check_rate_limit(request)
     wallet_a = validate_wallet_address(wallet_a)
     wallet_b = validate_wallet_address(wallet_b)
-
-    if wallet_a == wallet_b:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "message": "Wallet A and Wallet B must be different addresses."
-            },
-        )
-
     _metrics["comparison_requests"] += 1
 
     try:
-        profiles = await asyncio.wait_for(
-            asyncio.gather(
-                _analyze_for_compare(wallet_a, limit),
-                _analyze_for_compare(wallet_b, limit),
-            ),
-            timeout=ANALYSIS_TIMEOUT_SECONDS,
+        profile_a, profile_b = await asyncio.gather(
+            _analyze_for_compare(wallet_a, limit),
+            _analyze_for_compare(wallet_b, limit),
         )
-        result = compare_wallet_profiles(
-            build_profile_summary(profiles[0]),
-            build_profile_summary(profiles[1]),
-        )
-        result["history_limit"] = limit
-        result["generated_at"] = __import__(
-            "datetime"
-        ).datetime.now(__import__("datetime").timezone.utc).isoformat()
-        _metrics["comparison_success"] += 1
-        return result
-    except asyncio.TimeoutError:
-        _metrics["comparison_errors"] += 1
-        raise HTTPException(
-            status_code=504,
-            detail={
-                "message": "Wallet comparison timed out. Please try again later."
-            },
-        )
-    except ValueError:
-        _metrics["comparison_errors"] += 1
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "message": "Unable to process the wallet addresses."
-            },
-        )
+        result = compare_wallet_profiles(profile_a, profile_b)
     except Exception:
         _metrics["comparison_errors"] += 1
-        logger.exception("Wallet comparison failed")
+        logger.exception("wallet comparison failed")
         raise HTTPException(
             status_code=500,
-            detail={
-                "message": "Wallet comparison failed. Please try again later."
-            },
+            detail={"message": "Wallet comparison failed."},
         )
+
+    _metrics["comparison_success"] += 1
+    return result
 
 
 @app.get(
     "/discover/{seed_wallet}",
-    tags=["Smart Wallet Discovery"],
-    summary="Discover smart-wallet candidates",
     response_model=WalletDiscoveryResponse,
+    tags=["Smart Wallet Intelligence"],
+    summary="Discover wallets that repeatedly interact with a seed wallet",
 )
-async def discover_wallets(
+async def wallet_discovery(
     seed_wallet: str,
-    request: Request,
-    history: int = Query(
-        default=10,
-        ge=1,
-        le=50,
-        description="Recent seed-wallet transactions to scan.",
-    ),
-    candidates: int = Query(
-        default=5,
-        ge=1,
-        le=10,
-        description="Maximum candidates to return.",
-    ),
-    candidate_history: int = Query(
-        default=10,
-        ge=1,
-        le=20,
-        description="Recent transactions used to score each candidate.",
-    ),
+    history: int = Query(10, ge=1, le=50),
+    candidates: int = Query(5, ge=1, le=25),
+    candidate_history: int = Query(10, ge=1, le=50),
 ):
-    check_rate_limit(request)
     seed_wallet = validate_wallet_address(seed_wallet)
     _metrics["discovery_requests"] += 1
 
     try:
-        result = await asyncio.wait_for(
-            discover_smart_wallets(
-                seed_wallet,
-                history,
-                candidates,
-                candidate_history,
-            ),
-            timeout=ANALYSIS_TIMEOUT_SECONDS,
-        )
-        _metrics["discovery_success"] += 1
-        return result
-    except asyncio.TimeoutError:
-        _metrics["discovery_errors"] += 1
-        raise HTTPException(
-            status_code=504,
-            detail={
-                "message": "Wallet discovery timed out. Please try again later."
-            },
-        )
-    except ValueError:
-        _metrics["discovery_errors"] += 1
-        raise HTTPException(
-            status_code=400,
-            detail={"message": "Unable to process the seed wallet."},
+        result = await discover_smart_wallets(
+            seed_wallet,
+            history_limit=history,
+            max_candidates=candidates,
+            candidate_history_limit=candidate_history,
         )
     except Exception:
         _metrics["discovery_errors"] += 1
-        logger.exception(
-            "Wallet discovery failed for seed_wallet=%s",
-            seed_wallet,
-        )
+        logger.exception("wallet discovery failed seed=%s", seed_wallet)
         raise HTTPException(
             status_code=500,
-            detail={
-                "message": "Wallet discovery failed. Please try again later."
-            },
+            detail={"message": "Smart wallet discovery failed."},
         )
+
+    _metrics["discovery_success"] += 1
+    return result
 
 
 @app.get(
     "/rank/{seed_wallet}",
-    tags=["Smart Money Ranking"],
+    tags=["Smart Wallet Intelligence"],
     summary="Rank discovered wallets by smart-money quality",
 )
-async def rank_wallets(
+async def wallet_ranking(
     seed_wallet: str,
-    request: Request,
-    history: int = Query(
-        default=10,
-        ge=1,
-        le=50,
-        description="Recent seed-wallet transactions to scan.",
-    ),
-    candidates: int = Query(
-        default=10,
-        ge=1,
-        le=10,
-        description="Maximum candidate wallets to rank.",
-    ),
-    candidate_history: int = Query(
-        default=10,
-        ge=1,
-        le=20,
-        description="Recent transactions used to score each candidate.",
-    ),
-    min_confidence: float = Query(
-        default=40,
-        ge=0,
-        le=100,
-        description="Minimum data-confidence score required for ranking.",
-    ),
+    history: int = Query(10, ge=1, le=50),
+    candidates: int = Query(5, ge=1, le=25),
+    candidate_history: int = Query(10, ge=1, le=50),
+    min_confidence: float = Query(40.0, ge=0.0, le=100.0),
 ):
-    check_rate_limit(request)
     seed_wallet = validate_wallet_address(seed_wallet)
     _metrics["ranking_requests"] += 1
 
     try:
-        discovered = await asyncio.wait_for(
-            discover_smart_wallets(
-                seed_wallet,
-                history,
-                candidates,
-                candidate_history,
-            ),
-            timeout=ANALYSIS_TIMEOUT_SECONDS,
-        )
-        ranked = rank_smart_wallets(
-            discovered.get("candidates", []),
+        result = await rank_smart_wallets(
+            seed_wallet,
+            history_limit=history,
+            max_candidates=candidates,
+            candidate_history_limit=candidate_history,
             min_confidence=min_confidence,
-        )
-        _metrics["ranking_success"] += 1
-        return {
-            "seed_wallet": seed_wallet,
-            "history_scanned": discovered.get("history_scanned", 0),
-            "ranked_wallets": ranked,
-            "ranking": {
-                "method": "Confidence-adjusted smart-money ranking",
-                "minimum_confidence": min_confidence,
-                "candidate_count": len(ranked),
-                "read_only": True,
-            },
-        }
-    except asyncio.TimeoutError:
-        _metrics["ranking_errors"] += 1
-        raise HTTPException(
-            status_code=504,
-            detail={
-                "message": "Smart-money ranking timed out. Please try again later."
-            },
-        )
-    except ValueError:
-        _metrics["ranking_errors"] += 1
-        raise HTTPException(
-            status_code=400,
-            detail={"message": "Unable to process the seed wallet."},
         )
     except Exception:
         _metrics["ranking_errors"] += 1
-        logger.exception(
-            "Smart-money ranking failed for seed_wallet=%s",
-            seed_wallet,
-        )
+        logger.exception("wallet ranking failed seed=%s", seed_wallet)
         raise HTTPException(
             status_code=500,
-            detail={
-                "message": "Smart-money ranking failed. Please try again later."
-            },
+            detail={"message": "Smart money ranking failed."},
         )
 
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(
-        "api:app",
-        host=os.getenv("API_HOST", "127.0.0.1"),
-        port=int(os.getenv("API_PORT", "8000")),
-        reload=False,
-    )
+    _metrics["ranking_success"] += 1
+    return result
