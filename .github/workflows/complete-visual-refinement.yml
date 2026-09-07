@@ -1,0 +1,45 @@
+name: Complete LEGECY visual refinement
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize-visual-layer:
+    if: github.event.head_commit.message != 'Apply final LEGECY premium visual redesign'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge premium visual layer
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          target = Path('dashboard/dashboard_enhancements.js')
+          refinement = Path('dashboard/visual_refinement.js')
+          content = target.read_text(encoding='utf-8')
+          marker = "// Premium visual layer: intentionally isolated from wallet/API functionality."
+          if marker in content:
+              content = content.split(marker, 1)[0].rstrip() + "\n"
+          else:
+              marker2 = "// Premium visual refinement. This layer only changes presentation and keeps the wallet/API logic above intact."
+              if marker2 in content:
+                  content = content.split(marker2, 1)[0].rstrip() + "\n"
+          content += "\n// Premium visual refinement: presentation-only layer.\n"
+          content += refinement.read_text(encoding='utf-8').rstrip() + "\n"
+          target.write_text(content, encoding='utf-8')
+          PY
+
+      - name: Commit final visual bundle
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dashboard/dashboard_enhancements.js
+          git commit -m "Apply final LEGECY premium visual redesign" || exit 0
+          git push
