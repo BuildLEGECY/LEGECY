@@ -1,0 +1,125 @@
+name: Fix Intelligence Routes
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch API routes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("api.py")
+          text = path.read_text(encoding="utf-8")
+          marker = '@app.get(\n    "/discover/{seed_wallet}"'
+          start = text.find(marker)
+          if start < 0:
+              raise SystemExit("Discovery route marker not found")
+
+          replacement = '''@app.get(
+    "/discover/{seed_wallet}",
+    response_model=WalletDiscoveryResponse,
+    tags=["Smart Wallet Intelligence"],
+    summary="Discover wallets that repeatedly interact with a seed wallet",
+)
+async def wallet_discovery(
+    seed_wallet: str,
+    history: int = Query(10, ge=1, le=50),
+    candidates: int = Query(5, ge=1, le=25),
+    candidate_history: int = Query(10, ge=1, le=50),
+):
+    seed_wallet = validate_wallet_address(seed_wallet)
+    _metrics["discovery_requests"] += 1
+
+    try:
+        result = await discover_smart_wallets(
+            seed_wallet,
+            seed_history_limit=history,
+            candidate_limit=candidates,
+            candidate_history_limit=candidate_history,
+        )
+    except Exception:
+        _metrics["discovery_errors"] += 1
+        logger.exception("wallet discovery failed seed=%s", seed_wallet)
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "Smart wallet discovery failed."},
+        )
+
+    _metrics["discovery_success"] += 1
+    return result
+
+
+@app.get(
+    "/rank/{seed_wallet}",
+    tags=["Smart Wallet Intelligence"],
+    summary="Rank discovered wallets by smart-money quality",
+)
+async def wallet_ranking(
+    seed_wallet: str,
+    history: int = Query(10, ge=1, le=50),
+    candidates: int = Query(5, ge=1, le=25),
+    candidate_history: int = Query(10, ge=1, le=50),
+    min_confidence: float = Query(40.0, ge=0.0, le=100.0),
+):
+    seed_wallet = validate_wallet_address(seed_wallet)
+    _metrics["ranking_requests"] += 1
+
+    try:
+        discovery = await discover_smart_wallets(
+            seed_wallet,
+            seed_history_limit=history,
+            candidate_limit=candidates,
+            candidate_history_limit=candidate_history,
+        )
+        ranked_wallets = rank_smart_wallets(
+            discovery.get("candidates", []),
+            min_confidence=min_confidence,
+        )
+        result = {
+            "seed_wallet": seed_wallet,
+            "history_scanned": discovery.get("history_scanned", 0),
+            "ranked_wallets": ranked_wallets,
+            "ranking": {
+                "method": "Confidence-adjusted smart-money ranking",
+                "min_confidence": min_confidence,
+                "candidate_count": len(discovery.get("candidates", [])),
+                "ranked_count": len(ranked_wallets),
+                "read_only": True,
+            },
+        }
+    except Exception:
+        _metrics["ranking_errors"] += 1
+        logger.exception("wallet ranking failed seed=%s", seed_wallet)
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "Smart money ranking failed."},
+        )
+
+    _metrics["ranking_success"] += 1
+    return result
+
+'''
+
+          text = text[:start] + replacement
+          path.write_text(text, encoding="utf-8")
+
+      - name: Commit route fix and remove temporary workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/fix-intelligence-routes.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add api.py .github/workflows/fix-intelligence-routes.yml
+          git commit -m "Fix discovery and ranking route integration"
+          git push
